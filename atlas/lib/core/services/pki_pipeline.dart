@@ -4,7 +4,7 @@ import 'dart:math';
 import 'package:uuid/uuid.dart';
 import '../database/app_database.dart';
 import '../database/tables.dart';
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' show Value;
 
 /// Personal Knowledge Index Pipeline
 /// Runs after every event save to keep the system always learning.
@@ -322,9 +322,3 @@ class PKIPipeline {
   }
 }
 
-// ── Event retrieval helper ────────────────────────────────────────────────────
-
-extension AppDatabasePKI on AppDatabase {
-  Future<Event?> getEventById(String id) =>
-      (select(events)..where((e) => e.id.equals(id))).getSingleOrNull();
-}

@@ -181,6 +181,9 @@ class AppDatabase extends _$AppDatabase {
             ..orderBy([(e) => OrderingTerm.desc(e.timestamp)])
             ..limit(limit))
           .get();
+
+  Future<Event?> getEventById(String id) =>
+      (select(events)..where((e) => e.id.equals(id))).getSingleOrNull();
 }
 
 LazyDatabase _openConnection() {
