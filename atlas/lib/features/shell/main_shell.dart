@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../analytics/analytics_screen.dart';
 import '../entities/entities_screen.dart';
+import '../entities/entity_form_screen.dart';
 import '../events/events_screen.dart';
+import '../events/event_form_screen.dart';
 import '../ai_chat/ai_chat_screen.dart';
 import '../decisions/decisions_screen.dart';
 import '../search/search_screen.dart';
@@ -15,12 +17,12 @@ final _navIndexProvider = StateProvider<int>((ref) => 0);
 class MainShell extends ConsumerWidget {
   const MainShell({super.key});
 
-  static final _screens = [
-    const AnalyticsScreen(),
-    const EntitiesScreen(),
-    const EventsScreen(),
-    const AIChatScreen(),
-    const DecisionsScreen(),
+  static final _screens = const [
+    AnalyticsScreen(),
+    EntitiesScreen(),
+    EventsScreen(),
+    AIChatScreen(),
+    DecisionsScreen(),
   ];
 
   @override
@@ -30,7 +32,8 @@ class MainShell extends ConsumerWidget {
       body: IndexedStack(index: index, children: _screens),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
-        onDestinationSelected: (i) => ref.read(_navIndexProvider.notifier).state = i,
+        onDestinationSelected: (i) =>
+            ref.read(_navIndexProvider.notifier).state = i,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.dashboard_outlined),
@@ -59,11 +62,11 @@ class MainShell extends ConsumerWidget {
           ),
         ],
       ),
-      floatingActionButton: _buildFAB(context, ref, index),
+      floatingActionButton: _buildFAB(context, index),
     );
   }
 
-  Widget? _buildFAB(BuildContext context, WidgetRef ref, int index) {
+  Widget? _buildFAB(BuildContext context, int index) {
     if (index == 1) {
       return FloatingActionButton.extended(
         onPressed: () => Navigator.push(

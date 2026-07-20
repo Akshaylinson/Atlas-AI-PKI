@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../core/providers/providers.dart';
+import '../../core/database/app_database.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/utils.dart';
@@ -48,7 +49,6 @@ class AnalyticsScreen extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Stats row
               GridView.count(
                 crossAxisCount: 2,
                 shrinkWrap: true,
@@ -84,8 +84,6 @@ class AnalyticsScreen extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 24),
-
-              // Mood distribution chart
               if (stats.moodDistribution.isNotEmpty) ...[
                 const SectionHeader(title: 'Mood Distribution'),
                 const SizedBox(height: 12),
@@ -95,8 +93,6 @@ class AnalyticsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 24),
               ],
-
-              // Activity trend
               eventsAsync.when(
                 loading: () => const SizedBox.shrink(),
                 error: (_, __) => const SizedBox.shrink(),
@@ -116,8 +112,6 @@ class AnalyticsScreen extends ConsumerWidget {
                   );
                 },
               ),
-
-              // Recent events
               if (stats.recentEvents.isNotEmpty) ...[
                 const SectionHeader(title: 'Recent Events'),
                 const SizedBox(height: 12),
@@ -146,9 +140,11 @@ class _MoodPieChart extends StatelessWidget {
       return PieChartSectionData(
         value: e.value.toDouble(),
         color: color,
-        title: '${moodEmojis[e.key] ?? ''}\n${((e.value / total) * 100).toStringAsFixed(0)}%',
+        title:
+            '${moodEmojis[e.key] ?? ''}\n${((e.value / total) * 100).toStringAsFixed(0)}%',
         radius: 70,
-        titleStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+        titleStyle: const TextStyle(
+            fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
       );
     }).toList();
 
@@ -164,7 +160,8 @@ class _ActivityBarChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final last30 = List.generate(30, (i) => now.subtract(Duration(days: 29 - i)));
+    final last30 =
+        List.generate(30, (i) => now.subtract(Duration(days: 29 - i)));
     final counts = <int, int>{};
     for (final e in events) {
       final diff = now.difference(e.timestamp).inDays;
@@ -191,15 +188,22 @@ class _ActivityBarChart extends StatelessWidget {
       gridData: const FlGridData(show: false),
       borderData: FlBorderData(show: false),
       titlesData: FlTitlesData(
-        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        leftTitles:
+            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        topTitles:
+            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles:
+            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         bottomTitles: AxisTitles(
           sideTitles: SideTitles(
             showTitles: true,
             interval: 7,
             getTitlesWidget: (value, _) {
-              final day = last30[value.toInt()];
+              final idx = value.toInt();
+              if (idx < 0 || idx >= last30.length) {
+                return const SizedBox.shrink();
+              }
+              final day = last30[idx];
               return Text('${day.day}/${day.month}',
                   style: const TextStyle(fontSize: 9));
             },
@@ -222,7 +226,7 @@ class _RecentEventTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withOpacity(0.5),
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -240,7 +244,8 @@ class _RecentEventTile extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(formatRelative(event.timestamp),
                     style: TextStyle(
-                        fontSize: 11, color: scheme.onSurface.withOpacity(0.5))),
+                        fontSize: 11,
+                        color: scheme.onSurface.withValues(alpha: 0.5))),
               ],
             ),
           ),

@@ -8,7 +8,7 @@ class AtlasTheme {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: _seed),
         textTheme: GoogleFonts.interTextTheme(),
-        cardTheme: const CardTheme(elevation: 0, margin: EdgeInsets.zero),
+        cardTheme: const CardThemeData(elevation: 0, margin: EdgeInsets.zero),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -26,7 +26,7 @@ class AtlasTheme {
           brightness: Brightness.dark,
         ),
         textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
-        cardTheme: const CardTheme(elevation: 0, margin: EdgeInsets.zero),
+        cardTheme: const CardThemeData(elevation: 0, margin: EdgeInsets.zero),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),

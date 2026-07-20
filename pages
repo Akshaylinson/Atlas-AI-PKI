@@ -1,0 +1,23 @@
+⬜ Entities screen + Entity form (create/edit with custom fields, tags, decision checkbox)
+
+⬜ Events screen + Event form (rich text, mood, attachments, voice notes, decision checkbox)
+
+⬜ Decisions screen (decision journal with review tracking)
+
+⬜ AI Chat screen (Gemma interface with evidence display)
+
+⬜ Knowledge Graph screen (visual relationship graph)
+
+⬜ Patterns screen (pattern discovery display)
+
+⬜ Search screen (hybrid search UI)
+
+⬜ Settings screen (theme, model path, backup)
+
+⬜ Entity detail screen (timeline, stats, decision evidence)
+
+⬜ Event detail screen
+
+⬜ Drift generated file (app_database.g.dart) via build_runner
+
+⬜ Android permissions & manifest setup
