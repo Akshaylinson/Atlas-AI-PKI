@@ -3,6 +3,7 @@ import '../database/app_database.dart';
 import '../models/models.dart';
 import 'retrieval_engine.dart';
 import 'analytics_engine.dart';
+import 'model_loader.dart';
 
 /// Local AI Layer
 /// Gemma reasons over evidence packages - never invents statistics.
@@ -10,23 +11,17 @@ class GemmaService {
   final AppDatabase _db;
   final RetrievalEngine _retrieval;
   final AnalyticsEngine _analytics;
-
-  // Whether a real Gemma model is loaded
-  bool _modelLoaded = false;
+  final ModelLoader _loader;
 
   GemmaService(this._db)
       : _retrieval = RetrievalEngine(_db),
-        _analytics = AnalyticsEngine(_db);
+        _analytics = AnalyticsEngine(_db),
+        _loader = ModelLoader();
 
-  bool get isModelLoaded => _modelLoaded;
+  bool get isModelLoaded => _loader.isLoaded;
 
-  /// Load the Gemma model from local storage
-  Future<bool> loadModel(String modelPath) async {
-    // Placeholder: integrate flutter_gemma or llama.cpp FFI here
-    // For now, mark as loaded if path exists
-    _modelLoaded = true;
-    return true;
-  }
+  /// Load the Gemma model from internal storage install directory
+  Future<bool> loadModel(String installDir) => _loader.load(installDir);
 
   /// Main query entry point
   Future<AIResponse> query(String userQuestion) async {
@@ -38,7 +33,7 @@ class GemmaService {
 
     // Step 3: Generate response
     String responseText;
-    if (_modelLoaded) {
+    if (_loader.isLoaded) {
       responseText = await _runGemma(userQuestion, context);
     } else {
       responseText = _buildEvidenceBasedResponse(userQuestion, evidence, context);
@@ -109,12 +104,8 @@ class GemmaService {
 
   /// When Gemma model is loaded, pass structured prompt
   Future<String> _runGemma(String question, Map<String, dynamic> context) async {
-    // Build structured prompt
     final prompt = _buildPrompt(question, context);
-    // TODO: Pass to flutter_gemma inference engine
-    // final result = await GemmaModel.instance.generateText(prompt);
-    // return result;
-    return _buildEvidenceBasedResponse(question, null, context);
+    return _loader.generate(prompt);
   }
 
   String _buildPrompt(String question, Map<String, dynamic> context) {

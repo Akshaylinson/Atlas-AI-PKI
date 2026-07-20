@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Gemma model files - too large for git
+assets/models/gemma/model.gguf
+assets/models/gemma/tokenizer.json
+assets/models/gemma/config.json

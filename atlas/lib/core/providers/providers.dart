@@ -6,6 +6,7 @@ import '../services/analytics_engine.dart';
 import '../services/decision_intelligence.dart';
 import '../services/gemma_service.dart';
 import '../services/file_storage_service.dart';
+import '../services/model_installer.dart';
 
 // ── Core Services ─────────────────────────────────────────────────────────────
 
@@ -31,8 +32,21 @@ final decisionIntelligenceProvider = Provider<DecisionIntelligenceEngine>((ref) 
   return DecisionIntelligenceEngine(ref.watch(databaseProvider));
 });
 
+final modelInstallerProvider = Provider<ModelInstaller>((ref) => ModelInstaller());
+
+final modelInstallProvider = FutureProvider<String?>((ref) {
+  return ref.watch(modelInstallerProvider).ensureInstalled();
+});
+
 final gemmaServiceProvider = Provider<GemmaService>((ref) {
-  return GemmaService(ref.watch(databaseProvider));
+  final service = GemmaService(ref.watch(databaseProvider));
+  // Trigger model load once install path is available
+  ref.listen<AsyncValue<String?>>(modelInstallProvider, (_, next) {
+    next.whenData((path) {
+      if (path != null) service.loadModel(path);
+    });
+  });
+  return service;
 });
 
 final fileStorageProvider = Provider<FileStorageService>((ref) {
