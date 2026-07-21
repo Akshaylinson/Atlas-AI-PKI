@@ -311,14 +311,13 @@ class _TimelineEventTile extends StatelessWidget {
                             Text(
                               event.title!,
                               style: const TextStyle(
-                                  fontWeight: FontWeight.w600, fontSize: 14),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                                  fontWeight: FontWeight.w700, fontSize: 16),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 6),
                           ],
                           Text(
                             event.note,
+                            style: const TextStyle(fontSize: 13),
                             maxLines: 10,
                             overflow: TextOverflow.ellipsis,
                           ),
