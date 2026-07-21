@@ -10,6 +10,7 @@ import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/utils.dart';
 import 'entity_form_screen.dart';
 import '../events/event_form_screen.dart';
+import '../events/event_detail_screen.dart';
 
 class EntityDetailScreen extends ConsumerWidget {
   final String entityId;
@@ -253,95 +254,115 @@ class _TimelineEventTile extends StatelessWidget {
         ? (moodColors[event.mood] ?? Colors.grey)
         : scheme.primary;
 
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 40,
-            child: Column(
-              children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                      color: moodColor, shape: BoxShape.circle),
-                ),
-                if (!isLast)
-                  Expanded(
-                    child: Container(
-                        width: 2, color: scheme.outlineVariant),
-                  ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 16),
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => EventDetailScreen(eventId: event.id),
+        ),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 40,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(formatDateTime(event.timestamp),
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: scheme.onSurface.withValues(alpha: 0.5))),
-                  const SizedBox(height: 4),
                   Container(
-                    padding: const EdgeInsets.all(12),
+                    width: 12,
+                    height: 12,
                     decoration: BoxDecoration(
-                      color: scheme.surfaceContainerHighest
-                          .withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(event.note),
-                        if (event.mood != null || event.importance > 1)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Row(
-                              children: [
-                                if (event.mood != null)
-                                  Text(
-                                      '${moodEmojis[event.mood] ?? ''} ${event.mood}',
-                                      style:
-                                          const TextStyle(fontSize: 12)),
-                                const Spacer(),
-                                Row(
-                                  children: List.generate(
-                                    event.importance,
-                                    (_) => const Icon(Icons.star,
-                                        size: 12, color: Colors.amber),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        if (event.isDecision)
-                          Container(
-                            margin: const EdgeInsets.only(top: 6),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color:
-                                  Colors.amber.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text('Decision',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.amber,
-                                    fontWeight: FontWeight.w600)),
-                          ),
-                      ],
-                    ),
+                        color: moodColor, shape: BoxShape.circle),
                   ),
+                  if (!isLast)
+                    Expanded(
+                      child: Container(
+                          width: 2, color: scheme.outlineVariant),
+                    ),
                 ],
               ),
             ),
-          ),
-        ],
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(formatDateTime(event.timestamp),
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: scheme.onSurface.withValues(alpha: 0.5))),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest
+                            .withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: scheme.outlineVariant.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(event.note),
+                          if (event.mood != null || event.importance > 1)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Row(
+                                children: [
+                                  if (event.mood != null)
+                                    Text(
+                                        '${moodEmojis[event.mood] ?? ''} ${event.mood}',
+                                        style:
+                                            const TextStyle(fontSize: 12)),
+                                  const Spacer(),
+                                  Row(
+                                    children: List.generate(
+                                      event.importance,
+                                      (_) => const Icon(Icons.star,
+                                          size: 12, color: Colors.amber),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (event.isDecision)
+                            Container(
+                              margin: const EdgeInsets.only(top: 6),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color:
+                                    Colors.amber.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text('Decision',
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.amber,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Icon(Icons.chevron_right,
+                                  size: 14,
+                                  color: scheme.onSurface.withValues(alpha: 0.3)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
