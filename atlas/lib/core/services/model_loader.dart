@@ -3,10 +3,16 @@ import 'package:flutter_gemma/core/model.dart';
 
 class ModelLoader {
   InferenceModel? _model;
+  bool _loading = false;
+  String? _error;
 
   bool get isLoaded => _model != null;
+  bool get isLoading => _loading;
+  String? get loadError => _error;
 
   Future<bool> load(String modelPath) async {
+    _loading = true;
+    _error = null;
     try {
       final gemma = FlutterGemmaPlugin.instance;
       await gemma.modelManager.setModelPath(modelPath);
@@ -15,8 +21,11 @@ class ModelLoader {
         maxTokens: 2048,
       );
       return true;
-    } catch (_) {
+    } catch (e) {
+      _error = e.toString();
       return false;
+    } finally {
+      _loading = false;
     }
   }
 

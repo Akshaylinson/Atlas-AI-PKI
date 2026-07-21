@@ -44,8 +44,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final db = ref.read(databaseProvider);
     await db.setSetting('gemma_model_path', path);
 
-    final gemma = ref.read(gemmaServiceProvider);
-    await gemma.loadModel(path);
+    await ref.read(gemmaServiceProvider.notifier).loadModel(path);
 
     setState(() {
       _modelPath = path;
@@ -53,8 +52,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     });
 
     if (mounted) {
+      final state = ref.read(gemmaServiceProvider);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Model loaded successfully')),
+        SnackBar(
+          content: Text(state.isLoaded
+              ? 'Gemma model loaded successfully'
+              : 'Failed to load model: ${state.error ?? 'Unknown error'}'),
+          backgroundColor: state.isLoaded ? Colors.green : Colors.red,
+        ),
       );
     }
   }

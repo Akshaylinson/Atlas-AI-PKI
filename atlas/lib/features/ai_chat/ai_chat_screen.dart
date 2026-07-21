@@ -173,8 +173,53 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
 class _ModelStatusBanner extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isLoaded = ref.watch(gemmaServiceProvider).isModelLoaded;
-    if (isLoaded) return const SizedBox.shrink();
+    final state = ref.watch(gemmaServiceProvider);
+
+    if (state.isLoaded) return const SizedBox.shrink();
+
+    if (state.isLoading) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        color: Colors.blue.withOpacity(0.1),
+        child: const Row(
+          children: [
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blue),
+            ),
+            SizedBox(width: 8),
+            Text(
+              'Loading Gemma model, please wait…',
+              style: TextStyle(fontSize: 12, color: Colors.blue),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (state.error != null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        color: Colors.red.withOpacity(0.1),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.error_outline, size: 16, color: Colors.red),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Gemma failed to load: ${state.error}',
+                style: const TextStyle(fontSize: 12, color: Colors.red),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

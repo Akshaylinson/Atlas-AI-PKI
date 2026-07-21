@@ -38,15 +38,42 @@ final modelInstallProvider = FutureProvider<String?>((ref) {
   return ref.watch(modelInstallerProvider).ensureInstalled();
 });
 
-final gemmaServiceProvider = Provider<GemmaService>((ref) {
-  final service = GemmaService(ref.watch(databaseProvider));
-  // Trigger model load once install path is available
+// Tracks model load state so the UI can rebuild on changes
+class _ModelState {
+  final bool isLoading;
+  final bool isLoaded;
+  final String? error;
+  const _ModelState({this.isLoading = false, this.isLoaded = false, this.error});
+}
+
+class GemmaServiceNotifier extends StateNotifier<_ModelState> {
+  final GemmaService service;
+
+  GemmaServiceNotifier(this.service) : super(const _ModelState());
+
+  Future<void> loadModel(String path) async {
+    state = const _ModelState(isLoading: true);
+    final ok = await service.loadModel(path);
+    if (ok) {
+      state = const _ModelState(isLoaded: true);
+    } else {
+      state = _ModelState(error: service.modelLoadError ?? 'Unknown error');
+    }
+  }
+
+  bool get isLoaded => state.isLoaded;
+  bool get isLoading => state.isLoading;
+  String? get modelLoadError => state.error;
+}
+
+final gemmaServiceProvider = StateNotifierProvider<GemmaServiceNotifier, _ModelState>((ref) {
+  final notifier = GemmaServiceNotifier(GemmaService(ref.watch(databaseProvider)));
   ref.listen<AsyncValue<String?>>(modelInstallProvider, (_, next) {
     next.whenData((path) {
-      if (path != null) service.loadModel(path);
+      if (path != null) notifier.loadModel(path);
     });
   });
-  return service;
+  return notifier;
 });
 
 final fileStorageProvider = Provider<FileStorageService>((ref) {
@@ -190,7 +217,7 @@ class AIChatNotifier extends StateNotifier<List<ChatMessage>> {
 }
 
 final aiChatProvider = StateNotifierProvider<AIChatNotifier, List<ChatMessage>>((ref) {
-  return AIChatNotifier(ref.watch(gemmaServiceProvider));
+  return AIChatNotifier(ref.watch(gemmaServiceProvider.notifier).service);
 });
 
 // ── Dashboard Stats Model ─────────────────────────────────────────────────────

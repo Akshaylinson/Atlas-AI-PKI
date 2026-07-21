@@ -19,6 +19,8 @@ class GemmaService {
         _loader = ModelLoader();
 
   bool get isModelLoaded => _loader.isLoaded;
+  bool get isModelLoading => _loader.isLoading;
+  String? get modelLoadError => _loader.loadError;
 
   /// Load the Gemma model from internal storage install directory
   Future<bool> loadModel(String installDir) => _loader.load(installDir);
