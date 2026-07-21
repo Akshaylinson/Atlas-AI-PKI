@@ -147,6 +147,13 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
               const SizedBox(height: 16),
 
               // Note
+              if (event.title != null) ...[
+                Text(
+                  event.title!,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+              ],
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(

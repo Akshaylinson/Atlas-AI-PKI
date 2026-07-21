@@ -28,6 +28,7 @@ class EventFormScreen extends ConsumerStatefulWidget {
 
 class _EventFormScreenState extends ConsumerState<EventFormScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _titleCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
   final _tagCtrl = TextEditingController();
@@ -60,6 +61,7 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
     super.initState();
     final e = widget.event;
     if (e != null) {
+      _titleCtrl.text = e.title ?? '';
       _noteCtrl.text = e.note;
       _locationCtrl.text = e.location ?? '';
       _selectedMood = e.mood;
@@ -92,6 +94,7 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
 
   @override
   void dispose() {
+    _titleCtrl.dispose();
     _noteCtrl.dispose();
     _locationCtrl.dispose();
     _tagCtrl.dispose();
@@ -125,6 +128,7 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
 
     await db.upsertEvent(EventsCompanion(
       id: Value(id),
+      title: Value(_titleCtrl.text.trim().isEmpty ? null : _titleCtrl.text.trim()),
       note: Value(_noteCtrl.text.trim()),
       linkedEntityIds: Value(jsonEncode(_linkedEntityIds)),
       attachments: Value(Attachment.listToJson(_attachments)),
@@ -290,6 +294,18 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
               ),
             ),
             const SizedBox(height: 12),
+
+            // Title
+            TextFormField(
+              controller: _titleCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Title',
+                hintText: 'Short title for this event (optional)',
+              ),
+              textCapitalization: TextCapitalization.sentences,
+              maxLength: 80,
+            ),
+            const SizedBox(height: 4),
 
             // Note
             TextFormField(

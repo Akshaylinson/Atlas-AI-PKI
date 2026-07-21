@@ -230,6 +230,15 @@ class _EventCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
+            if (event.title != null) ...[
+              Text(
+                event.title!,
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+            ],
             Text(truncate(event.note, 120)),
             if (attachments.isNotEmpty)
               Padding(

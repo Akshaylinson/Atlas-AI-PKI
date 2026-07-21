@@ -21,7 +21,17 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await customStatement(
+            'ALTER TABLE events ADD COLUMN title TEXT;');
+      }
+    },
+  );
 
   // ── Entities ──────────────────────────────────────────────────────────────
 
@@ -67,7 +77,7 @@ class AppDatabase extends _$AppDatabase {
       .watch();
 
   Future<List<Event>> searchEvents(String query) => (select(events)
-        ..where((e) => e.note.like('%$query%') | e.tags.like('%$query%')))
+        ..where((e) => e.note.like('%$query%') | e.tags.like('%$query%') | e.title.like('%$query%')))
       .get();
 
   Future<List<Event>> getEventsByDateRange(DateTime from, DateTime to) =>

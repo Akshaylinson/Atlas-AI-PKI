@@ -861,6 +861,11 @@ class $EventsTable extends Events with TableInfo<$EventsTable, Event> {
   late final GeneratedColumn<String> id = GeneratedColumn<String>(
       'id', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+      'title', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _noteMeta = const VerificationMeta('note');
   @override
   late final GeneratedColumn<String> note = GeneratedColumn<String>(
@@ -1005,6 +1010,7 @@ class $EventsTable extends Events with TableInfo<$EventsTable, Event> {
   @override
   List<GeneratedColumn> get $columns => [
         id,
+        title,
         note,
         linkedEntityIds,
         attachments,
@@ -1041,6 +1047,10 @@ class $EventsTable extends Events with TableInfo<$EventsTable, Event> {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     } else if (isInserting) {
       context.missing(_idMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+          _titleMeta, title.isAcceptableOrUnknown(data['title']!, _titleMeta));
     }
     if (data.containsKey('note')) {
       context.handle(
@@ -1166,6 +1176,8 @@ class $EventsTable extends Events with TableInfo<$EventsTable, Event> {
     return Event(
       id: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      title: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}title']),
       note: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}note'])!,
       linkedEntityIds: attachedDatabase.typeMapping.read(
@@ -1222,6 +1234,7 @@ class $EventsTable extends Events with TableInfo<$EventsTable, Event> {
 
 class Event extends DataClass implements Insertable<Event> {
   final String id;
+  final String? title;
   final String note;
   final String linkedEntityIds;
   final String attachments;
@@ -1245,6 +1258,7 @@ class Event extends DataClass implements Insertable<Event> {
   final DateTime createdAt;
   const Event(
       {required this.id,
+      this.title,
       required this.note,
       required this.linkedEntityIds,
       required this.attachments,
@@ -1270,6 +1284,9 @@ class Event extends DataClass implements Insertable<Event> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
+    if (!nullToAbsent || title != null) {
+      map['title'] = Variable<String>(title);
+    }
     map['note'] = Variable<String>(note);
     map['linked_entity_ids'] = Variable<String>(linkedEntityIds);
     map['attachments'] = Variable<String>(attachments);
@@ -1322,6 +1339,8 @@ class Event extends DataClass implements Insertable<Event> {
   EventsCompanion toCompanion(bool nullToAbsent) {
     return EventsCompanion(
       id: Value(id),
+      title:
+          title == null && nullToAbsent ? const Value.absent() : Value(title),
       note: Value(note),
       linkedEntityIds: Value(linkedEntityIds),
       attachments: Value(attachments),
@@ -1373,6 +1392,7 @@ class Event extends DataClass implements Insertable<Event> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return Event(
       id: serializer.fromJson<String>(json['id']),
+      title: serializer.fromJson<String?>(json['title']),
       note: serializer.fromJson<String>(json['note']),
       linkedEntityIds: serializer.fromJson<String>(json['linkedEntityIds']),
       attachments: serializer.fromJson<String>(json['attachments']),
@@ -1405,6 +1425,7 @@ class Event extends DataClass implements Insertable<Event> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
+      'title': serializer.toJson<String?>(title),
       'note': serializer.toJson<String>(note),
       'linkedEntityIds': serializer.toJson<String>(linkedEntityIds),
       'attachments': serializer.toJson<String>(attachments),
@@ -1433,6 +1454,7 @@ class Event extends DataClass implements Insertable<Event> {
 
   Event copyWith(
           {String? id,
+          Value<String?> title = const Value.absent(),
           String? note,
           String? linkedEntityIds,
           String? attachments,
@@ -1456,6 +1478,7 @@ class Event extends DataClass implements Insertable<Event> {
           DateTime? createdAt}) =>
       Event(
         id: id ?? this.id,
+        title: title.present ? title.value : this.title,
         note: note ?? this.note,
         linkedEntityIds: linkedEntityIds ?? this.linkedEntityIds,
         attachments: attachments ?? this.attachments,
@@ -1496,6 +1519,7 @@ class Event extends DataClass implements Insertable<Event> {
   Event copyWithCompanion(EventsCompanion data) {
     return Event(
       id: data.id.present ? data.id.value : this.id,
+      title: data.title.present ? data.title.value : this.title,
       note: data.note.present ? data.note.value : this.note,
       linkedEntityIds: data.linkedEntityIds.present
           ? data.linkedEntityIds.value
@@ -1547,6 +1571,7 @@ class Event extends DataClass implements Insertable<Event> {
   String toString() {
     return (StringBuffer('Event(')
           ..write('id: $id, ')
+          ..write('title: $title, ')
           ..write('note: $note, ')
           ..write('linkedEntityIds: $linkedEntityIds, ')
           ..write('attachments: $attachments, ')
@@ -1575,6 +1600,7 @@ class Event extends DataClass implements Insertable<Event> {
   @override
   int get hashCode => Object.hashAll([
         id,
+        title,
         note,
         linkedEntityIds,
         attachments,
@@ -1602,6 +1628,7 @@ class Event extends DataClass implements Insertable<Event> {
       identical(this, other) ||
       (other is Event &&
           other.id == this.id &&
+          other.title == this.title &&
           other.note == this.note &&
           other.linkedEntityIds == this.linkedEntityIds &&
           other.attachments == this.attachments &&
@@ -1627,6 +1654,7 @@ class Event extends DataClass implements Insertable<Event> {
 
 class EventsCompanion extends UpdateCompanion<Event> {
   final Value<String> id;
+  final Value<String?> title;
   final Value<String> note;
   final Value<String> linkedEntityIds;
   final Value<String> attachments;
@@ -1651,6 +1679,7 @@ class EventsCompanion extends UpdateCompanion<Event> {
   final Value<int> rowid;
   const EventsCompanion({
     this.id = const Value.absent(),
+    this.title = const Value.absent(),
     this.note = const Value.absent(),
     this.linkedEntityIds = const Value.absent(),
     this.attachments = const Value.absent(),
@@ -1676,6 +1705,7 @@ class EventsCompanion extends UpdateCompanion<Event> {
   });
   EventsCompanion.insert({
     required String id,
+    this.title = const Value.absent(),
     required String note,
     this.linkedEntityIds = const Value.absent(),
     this.attachments = const Value.absent(),
@@ -1702,6 +1732,7 @@ class EventsCompanion extends UpdateCompanion<Event> {
         note = Value(note);
   static Insertable<Event> custom({
     Expression<String>? id,
+    Expression<String>? title,
     Expression<String>? note,
     Expression<String>? linkedEntityIds,
     Expression<String>? attachments,
@@ -1727,6 +1758,7 @@ class EventsCompanion extends UpdateCompanion<Event> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (title != null) 'title': title,
       if (note != null) 'note': note,
       if (linkedEntityIds != null) 'linked_entity_ids': linkedEntityIds,
       if (attachments != null) 'attachments': attachments,
@@ -1757,6 +1789,7 @@ class EventsCompanion extends UpdateCompanion<Event> {
 
   EventsCompanion copyWith(
       {Value<String>? id,
+      Value<String?>? title,
       Value<String>? note,
       Value<String>? linkedEntityIds,
       Value<String>? attachments,
@@ -1781,6 +1814,7 @@ class EventsCompanion extends UpdateCompanion<Event> {
       Value<int>? rowid}) {
     return EventsCompanion(
       id: id ?? this.id,
+      title: title ?? this.title,
       note: note ?? this.note,
       linkedEntityIds: linkedEntityIds ?? this.linkedEntityIds,
       attachments: attachments ?? this.attachments,
@@ -1813,6 +1847,9 @@ class EventsCompanion extends UpdateCompanion<Event> {
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<String>(id.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
     }
     if (note.present) {
       map['note'] = Variable<String>(note.value);
@@ -1890,6 +1927,7 @@ class EventsCompanion extends UpdateCompanion<Event> {
   String toString() {
     return (StringBuffer('EventsCompanion(')
           ..write('id: $id, ')
+          ..write('title: $title, ')
           ..write('note: $note, ')
           ..write('linkedEntityIds: $linkedEntityIds, ')
           ..write('attachments: $attachments, ')
@@ -4584,6 +4622,7 @@ typedef $$EntitiesTableProcessedTableManager = ProcessedTableManager<
     PrefetchHooks Function()>;
 typedef $$EventsTableCreateCompanionBuilder = EventsCompanion Function({
   required String id,
+  Value<String?> title,
   required String note,
   Value<String> linkedEntityIds,
   Value<String> attachments,
@@ -4609,6 +4648,7 @@ typedef $$EventsTableCreateCompanionBuilder = EventsCompanion Function({
 });
 typedef $$EventsTableUpdateCompanionBuilder = EventsCompanion Function({
   Value<String> id,
+  Value<String?> title,
   Value<String> note,
   Value<String> linkedEntityIds,
   Value<String> attachments,
@@ -4644,6 +4684,9 @@ class $$EventsTableFilterComposer
   });
   ColumnFilters<String> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get title => $composableBuilder(
+      column: $table.title, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get note => $composableBuilder(
       column: $table.note, builder: (column) => ColumnFilters(column));
@@ -4728,6 +4771,9 @@ class $$EventsTableOrderingComposer
   });
   ColumnOrderings<String> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get title => $composableBuilder(
+      column: $table.title, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<String> get note => $composableBuilder(
       column: $table.note, builder: (column) => ColumnOrderings(column));
@@ -4814,6 +4860,9 @@ class $$EventsTableAnnotationComposer
   });
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
 
   GeneratedColumn<String> get note =>
       $composableBuilder(column: $table.note, builder: (column) => column);
@@ -4903,6 +4952,7 @@ class $$EventsTableTableManager extends RootTableManager<
               $$EventsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback: ({
             Value<String> id = const Value.absent(),
+            Value<String?> title = const Value.absent(),
             Value<String> note = const Value.absent(),
             Value<String> linkedEntityIds = const Value.absent(),
             Value<String> attachments = const Value.absent(),
@@ -4928,6 +4978,7 @@ class $$EventsTableTableManager extends RootTableManager<
           }) =>
               EventsCompanion(
             id: id,
+            title: title,
             note: note,
             linkedEntityIds: linkedEntityIds,
             attachments: attachments,
@@ -4953,6 +5004,7 @@ class $$EventsTableTableManager extends RootTableManager<
           ),
           createCompanionCallback: ({
             required String id,
+            Value<String?> title = const Value.absent(),
             required String note,
             Value<String> linkedEntityIds = const Value.absent(),
             Value<String> attachments = const Value.absent(),
@@ -4978,6 +5030,7 @@ class $$EventsTableTableManager extends RootTableManager<
           }) =>
               EventsCompanion.insert(
             id: id,
+            title: title,
             note: note,
             linkedEntityIds: linkedEntityIds,
             attachments: attachments,

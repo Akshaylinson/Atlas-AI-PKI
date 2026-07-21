@@ -307,7 +307,32 @@ class _TimelineEventTile extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(event.note),
+                          if (event.title != null) ...[
+                            Text(
+                              event.title!,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 14),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                          ],
+                          Text(
+                            event.note,
+                            maxLines: 10,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (event.note.length > 300)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                'Read more',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: scheme.primary,
+                                    fontWeight: FontWeight.w500),
+                              ),
+                            ),
                           if (event.mood != null || event.importance > 1)
                             Padding(
                               padding: const EdgeInsets.only(top: 8),
@@ -329,14 +354,42 @@ class _TimelineEventTile extends StatelessWidget {
                                 ],
                               ),
                             ),
+                          Builder(builder: (_) {
+                            final attachments =
+                                List.from(jsonDecode(event.attachments));
+                            final hasVoice = event.voiceNotePath != null;
+                            if (attachments.isEmpty && !hasVoice) {
+                              return const SizedBox.shrink();
+                            }
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Wrap(
+                                spacing: 6,
+                                children: [
+                                  if (attachments.isNotEmpty)
+                                    _BadgeChip(
+                                      icon: Icons.attach_file,
+                                      label:
+                                          '${attachments.length} attachment${attachments.length > 1 ? 's' : ''}',
+                                      color: scheme.primary,
+                                    ),
+                                  if (hasVoice)
+                                    const _BadgeChip(
+                                      icon: Icons.mic,
+                                      label: 'Voice note',
+                                      color: Colors.red,
+                                    ),
+                                ],
+                              ),
+                            );
+                          }),
                           if (event.isDecision)
                             Container(
                               margin: const EdgeInsets.only(top: 6),
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 2),
                               decoration: BoxDecoration(
-                                color:
-                                    Colors.amber.withValues(alpha: 0.15),
+                                color: Colors.amber.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: const Text('Decision',
@@ -351,7 +404,8 @@ class _TimelineEventTile extends StatelessWidget {
                             children: [
                               Icon(Icons.chevron_right,
                                   size: 14,
-                                  color: scheme.onSurface.withValues(alpha: 0.3)),
+                                  color: scheme.onSurface
+                                      .withValues(alpha: 0.3)),
                             ],
                           ),
                         ],
@@ -646,7 +700,37 @@ class _RelationshipTile extends ConsumerWidget {
   }
 }
 
-// ── Decision Tab ──────────────────────────────────────────────────────────────
+// ── Badge Chip ────────────────────────────────────────────────────────────────
+
+class _BadgeChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _BadgeChip(
+      {required this.icon, required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 3),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 11, color: color, fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+}
 
 class _DecisionTab extends ConsumerWidget {
   final Entity entity;

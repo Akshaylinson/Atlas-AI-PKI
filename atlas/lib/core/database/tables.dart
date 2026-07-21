@@ -26,6 +26,7 @@ class Entities extends Table {
 
 class Events extends Table {
   TextColumn get id => text()();
+  TextColumn get title => text().nullable()();
   TextColumn get note => text()();
   TextColumn get linkedEntityIds => text().withDefault(const Constant('[]'))(); // JSON array
   TextColumn get attachments => text().withDefault(const Constant('[]'))(); // JSON array of paths
