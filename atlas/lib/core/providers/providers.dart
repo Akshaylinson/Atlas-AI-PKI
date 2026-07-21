@@ -86,8 +86,8 @@ final entitiesStreamProvider = StreamProvider<List<Entity>>((ref) {
   return ref.watch(databaseProvider).watchAllEntities();
 });
 
-final entityByIdProvider = FutureProvider.family<Entity?, String>((ref, id) {
-  return ref.watch(databaseProvider).getEntityById(id);
+final entityByIdProvider = StreamProvider.family<Entity?, String>((ref, id) {
+  return ref.watch(databaseProvider).watchEntityById(id);
 });
 
 final entitySearchProvider = FutureProvider.family<List<Entity>, String>((ref, query) {

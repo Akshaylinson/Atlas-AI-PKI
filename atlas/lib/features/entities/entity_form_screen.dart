@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:convert';
 import '../../core/database/app_database.dart';
@@ -26,6 +28,7 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
   List<String> _tags = [];
   Color _color = const Color(0xFF6750A4);
   String? _icon;
+  String? _profileImagePath;
   String _status = 'active';
   bool _isDecision = false;
   List<Map<String, String>> _customFields = [];
@@ -51,6 +54,7 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
         _color = Color(int.tryParse(e.color!) ?? const Color(0xFF6750A4).toARGB32());
       }
       _icon = e.icon;
+      _profileImagePath = e.profileImagePath;
       _status = e.status;
       _isDecision = e.isDecision;
       if (e.decisionOptions != null) {
@@ -100,6 +104,7 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
 
     await db.upsertEntity(EntitiesCompanion(
       id: Value(id),
+      profileImagePath: Value(_profileImagePath),
       name: Value(_nameCtrl.text.trim()),
       description: Value(_descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim()),
       tags: Value(jsonEncode(_tags)),
@@ -162,6 +167,67 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // Profile Image
+            Center(
+              child: GestureDetector(
+                onTap: _pickProfileImage,
+                child: Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 48,
+                      backgroundColor: _color.withOpacity(0.2),
+                      backgroundImage: _profileImagePath != null
+                          ? FileImage(File(_profileImagePath!))
+                          : null,
+                      child: _profileImagePath == null
+                          ? Text(
+                              _nameCtrl.text.isNotEmpty
+                                  ? _nameCtrl.text[0].toUpperCase()
+                                  : '?',
+                              style: TextStyle(
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.bold,
+                                  color: _color),
+                            )
+                          : null,
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: _color,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.camera_alt,
+                            size: 16, color: Colors.white),
+                      ),
+                    ),
+                    if (_profileImagePath != null)
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: GestureDetector(
+                          onTap: () =>
+                              setState(() => _profileImagePath = null),
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.close,
+                                size: 14, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
             // Name
             TextFormField(
               controller: _nameCtrl,
@@ -414,6 +480,13 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _pickProfileImage() async {
+    final picker = ImagePicker();
+    final picked =
+        await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    if (picked != null) setState(() => _profileImagePath = picked.path);
   }
 
   Future<void> _pickColor() async {

@@ -18,6 +18,12 @@ class $EntitiesTable extends Entities with TableInfo<$EntitiesTable, Entity> {
   late final GeneratedColumn<String> name = GeneratedColumn<String>(
       'name', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _profileImagePathMeta =
+      const VerificationMeta('profileImagePath');
+  @override
+  late final GeneratedColumn<String> profileImagePath = GeneratedColumn<String>(
+      'profile_image_path', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _descriptionMeta =
       const VerificationMeta('description');
   @override
@@ -122,6 +128,7 @@ class $EntitiesTable extends Entities with TableInfo<$EntitiesTable, Entity> {
   List<GeneratedColumn> get $columns => [
         id,
         name,
+        profileImagePath,
         description,
         tags,
         customFields,
@@ -158,6 +165,12 @@ class $EntitiesTable extends Entities with TableInfo<$EntitiesTable, Entity> {
           _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
     } else if (isInserting) {
       context.missing(_nameMeta);
+    }
+    if (data.containsKey('profile_image_path')) {
+      context.handle(
+          _profileImagePathMeta,
+          profileImagePath.isAcceptableOrUnknown(
+              data['profile_image_path']!, _profileImagePathMeta));
     }
     if (data.containsKey('description')) {
       context.handle(
@@ -251,6 +264,8 @@ class $EntitiesTable extends Entities with TableInfo<$EntitiesTable, Entity> {
           .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
       name: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
+      profileImagePath: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}profile_image_path']),
       description: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}description']),
       tags: attachedDatabase.typeMapping
@@ -296,6 +311,7 @@ class $EntitiesTable extends Entities with TableInfo<$EntitiesTable, Entity> {
 class Entity extends DataClass implements Insertable<Entity> {
   final String id;
   final String name;
+  final String? profileImagePath;
   final String? description;
   final String tags;
   final String customFields;
@@ -314,6 +330,7 @@ class Entity extends DataClass implements Insertable<Entity> {
   const Entity(
       {required this.id,
       required this.name,
+      this.profileImagePath,
       this.description,
       required this.tags,
       required this.customFields,
@@ -334,6 +351,9 @@ class Entity extends DataClass implements Insertable<Entity> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['name'] = Variable<String>(name);
+    if (!nullToAbsent || profileImagePath != null) {
+      map['profile_image_path'] = Variable<String>(profileImagePath);
+    }
     if (!nullToAbsent || description != null) {
       map['description'] = Variable<String>(description);
     }
@@ -375,6 +395,9 @@ class Entity extends DataClass implements Insertable<Entity> {
     return EntitiesCompanion(
       id: Value(id),
       name: Value(name),
+      profileImagePath: profileImagePath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(profileImagePath),
       description: description == null && nullToAbsent
           ? const Value.absent()
           : Value(description),
@@ -414,6 +437,7 @@ class Entity extends DataClass implements Insertable<Entity> {
     return Entity(
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
+      profileImagePath: serializer.fromJson<String?>(json['profileImagePath']),
       description: serializer.fromJson<String?>(json['description']),
       tags: serializer.fromJson<String>(json['tags']),
       customFields: serializer.fromJson<String>(json['customFields']),
@@ -441,6 +465,7 @@ class Entity extends DataClass implements Insertable<Entity> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
+      'profileImagePath': serializer.toJson<String?>(profileImagePath),
       'description': serializer.toJson<String?>(description),
       'tags': serializer.toJson<String>(tags),
       'customFields': serializer.toJson<String>(customFields),
@@ -464,6 +489,7 @@ class Entity extends DataClass implements Insertable<Entity> {
   Entity copyWith(
           {String? id,
           String? name,
+          Value<String?> profileImagePath = const Value.absent(),
           Value<String?> description = const Value.absent(),
           String? tags,
           String? customFields,
@@ -482,6 +508,9 @@ class Entity extends DataClass implements Insertable<Entity> {
       Entity(
         id: id ?? this.id,
         name: name ?? this.name,
+        profileImagePath: profileImagePath.present
+            ? profileImagePath.value
+            : this.profileImagePath,
         description: description.present ? description.value : this.description,
         tags: tags ?? this.tags,
         customFields: customFields ?? this.customFields,
@@ -514,6 +543,9 @@ class Entity extends DataClass implements Insertable<Entity> {
     return Entity(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
+      profileImagePath: data.profileImagePath.present
+          ? data.profileImagePath.value
+          : this.profileImagePath,
       description:
           data.description.present ? data.description.value : this.description,
       tags: data.tags.present ? data.tags.value : this.tags,
@@ -553,6 +585,7 @@ class Entity extends DataClass implements Insertable<Entity> {
     return (StringBuffer('Entity(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('profileImagePath: $profileImagePath, ')
           ..write('description: $description, ')
           ..write('tags: $tags, ')
           ..write('customFields: $customFields, ')
@@ -576,6 +609,7 @@ class Entity extends DataClass implements Insertable<Entity> {
   int get hashCode => Object.hash(
       id,
       name,
+      profileImagePath,
       description,
       tags,
       customFields,
@@ -597,6 +631,7 @@ class Entity extends DataClass implements Insertable<Entity> {
       (other is Entity &&
           other.id == this.id &&
           other.name == this.name &&
+          other.profileImagePath == this.profileImagePath &&
           other.description == this.description &&
           other.tags == this.tags &&
           other.customFields == this.customFields &&
@@ -617,6 +652,7 @@ class Entity extends DataClass implements Insertable<Entity> {
 class EntitiesCompanion extends UpdateCompanion<Entity> {
   final Value<String> id;
   final Value<String> name;
+  final Value<String?> profileImagePath;
   final Value<String?> description;
   final Value<String> tags;
   final Value<String> customFields;
@@ -636,6 +672,7 @@ class EntitiesCompanion extends UpdateCompanion<Entity> {
   const EntitiesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
+    this.profileImagePath = const Value.absent(),
     this.description = const Value.absent(),
     this.tags = const Value.absent(),
     this.customFields = const Value.absent(),
@@ -656,6 +693,7 @@ class EntitiesCompanion extends UpdateCompanion<Entity> {
   EntitiesCompanion.insert({
     required String id,
     required String name,
+    this.profileImagePath = const Value.absent(),
     this.description = const Value.absent(),
     this.tags = const Value.absent(),
     this.customFields = const Value.absent(),
@@ -677,6 +715,7 @@ class EntitiesCompanion extends UpdateCompanion<Entity> {
   static Insertable<Entity> custom({
     Expression<String>? id,
     Expression<String>? name,
+    Expression<String>? profileImagePath,
     Expression<String>? description,
     Expression<String>? tags,
     Expression<String>? customFields,
@@ -697,6 +736,7 @@ class EntitiesCompanion extends UpdateCompanion<Entity> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
+      if (profileImagePath != null) 'profile_image_path': profileImagePath,
       if (description != null) 'description': description,
       if (tags != null) 'tags': tags,
       if (customFields != null) 'custom_fields': customFields,
@@ -722,6 +762,7 @@ class EntitiesCompanion extends UpdateCompanion<Entity> {
   EntitiesCompanion copyWith(
       {Value<String>? id,
       Value<String>? name,
+      Value<String?>? profileImagePath,
       Value<String?>? description,
       Value<String>? tags,
       Value<String>? customFields,
@@ -741,6 +782,7 @@ class EntitiesCompanion extends UpdateCompanion<Entity> {
     return EntitiesCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
+      profileImagePath: profileImagePath ?? this.profileImagePath,
       description: description ?? this.description,
       tags: tags ?? this.tags,
       customFields: customFields ?? this.customFields,
@@ -770,6 +812,9 @@ class EntitiesCompanion extends UpdateCompanion<Entity> {
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
+    }
+    if (profileImagePath.present) {
+      map['profile_image_path'] = Variable<String>(profileImagePath.value);
     }
     if (description.present) {
       map['description'] = Variable<String>(description.value);
@@ -830,6 +875,7 @@ class EntitiesCompanion extends UpdateCompanion<Entity> {
     return (StringBuffer('EntitiesCompanion(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('profileImagePath: $profileImagePath, ')
           ..write('description: $description, ')
           ..write('tags: $tags, ')
           ..write('customFields: $customFields, ')
@@ -4265,6 +4311,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
 typedef $$EntitiesTableCreateCompanionBuilder = EntitiesCompanion Function({
   required String id,
   required String name,
+  Value<String?> profileImagePath,
   Value<String?> description,
   Value<String> tags,
   Value<String> customFields,
@@ -4285,6 +4332,7 @@ typedef $$EntitiesTableCreateCompanionBuilder = EntitiesCompanion Function({
 typedef $$EntitiesTableUpdateCompanionBuilder = EntitiesCompanion Function({
   Value<String> id,
   Value<String> name,
+  Value<String?> profileImagePath,
   Value<String?> description,
   Value<String> tags,
   Value<String> customFields,
@@ -4317,6 +4365,10 @@ class $$EntitiesTableFilterComposer
 
   ColumnFilters<String> get name => $composableBuilder(
       column: $table.name, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get profileImagePath => $composableBuilder(
+      column: $table.profileImagePath,
+      builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get description => $composableBuilder(
       column: $table.description, builder: (column) => ColumnFilters(column));
@@ -4385,6 +4437,10 @@ class $$EntitiesTableOrderingComposer
   ColumnOrderings<String> get name => $composableBuilder(
       column: $table.name, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get profileImagePath => $composableBuilder(
+      column: $table.profileImagePath,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get description => $composableBuilder(
       column: $table.description, builder: (column) => ColumnOrderings(column));
 
@@ -4452,6 +4508,9 @@ class $$EntitiesTableAnnotationComposer
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get profileImagePath => $composableBuilder(
+      column: $table.profileImagePath, builder: (column) => column);
 
   GeneratedColumn<String> get description => $composableBuilder(
       column: $table.description, builder: (column) => column);
@@ -4524,6 +4583,7 @@ class $$EntitiesTableTableManager extends RootTableManager<
           updateCompanionCallback: ({
             Value<String> id = const Value.absent(),
             Value<String> name = const Value.absent(),
+            Value<String?> profileImagePath = const Value.absent(),
             Value<String?> description = const Value.absent(),
             Value<String> tags = const Value.absent(),
             Value<String> customFields = const Value.absent(),
@@ -4544,6 +4604,7 @@ class $$EntitiesTableTableManager extends RootTableManager<
               EntitiesCompanion(
             id: id,
             name: name,
+            profileImagePath: profileImagePath,
             description: description,
             tags: tags,
             customFields: customFields,
@@ -4564,6 +4625,7 @@ class $$EntitiesTableTableManager extends RootTableManager<
           createCompanionCallback: ({
             required String id,
             required String name,
+            Value<String?> profileImagePath = const Value.absent(),
             Value<String?> description = const Value.absent(),
             Value<String> tags = const Value.absent(),
             Value<String> customFields = const Value.absent(),
@@ -4584,6 +4646,7 @@ class $$EntitiesTableTableManager extends RootTableManager<
               EntitiesCompanion.insert(
             id: id,
             name: name,
+            profileImagePath: profileImagePath,
             description: description,
             tags: tags,
             customFields: customFields,

@@ -1,9 +1,13 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:convert';
+import 'package:open_filex/open_filex.dart';
+import 'package:photo_view/photo_view.dart';
 import '../../core/providers/providers.dart';
 import '../../core/database/app_database.dart';
+import '../../core/models/models.dart';
 import '../../core/services/decision_intelligence.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/theme/app_theme.dart';
@@ -68,7 +72,7 @@ class EntityDetailScreen extends ConsumerWidget {
             label: const Text('Add Event'),
           ),
           body: DefaultTabController(
-            length: 4,
+            length: 5,
             child: NestedScrollView(
               headerSliverBuilder: (context, _) => [
                 SliverToBoxAdapter(
@@ -86,17 +90,26 @@ class EntityDetailScreen extends ConsumerWidget {
                               decoration: BoxDecoration(
                                 color: color.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(16),
+                                image: entity.profileImagePath != null
+                                    ? DecorationImage(
+                                        image: FileImage(
+                                            File(entity.profileImagePath!)),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null,
                               ),
-                              child: Center(
-                                child: Text(
-                                  entity.icon ?? entity.name[0].toUpperCase(),
-                                  style: TextStyle(
-                                    fontSize: entity.icon != null ? 28 : 22,
-                                    fontWeight: FontWeight.bold,
-                                    color: color,
-                                  ),
-                                ),
-                              ),
+                              child: entity.profileImagePath == null
+                                  ? Center(
+                                      child: Text(
+                                        entity.icon ?? entity.name[0].toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: entity.icon != null ? 28 : 22,
+                                          fontWeight: FontWeight.bold,
+                                          color: color,
+                                        ),
+                                      ),
+                                    )
+                                  : null,
                             ),
                             const SizedBox(width: 12),
                             Expanded(
@@ -174,6 +187,7 @@ class EntityDetailScreen extends ConsumerWidget {
                   _StatsTab(statsAsync: statsAsync),
                   _GraphTab(entityId: entityId, relsAsync: relsAsync),
                   _DecisionTab(entity: entity),
+                  _GalleryTab(eventsAsync: eventsAsync),
                 ],
               ),
             ),
@@ -228,6 +242,7 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
           Tab(text: 'Stats'),
           Tab(text: 'Graph'),
           Tab(text: 'Decision'),
+          Tab(text: 'Gallery'),
         ],
       ),
     );
@@ -717,6 +732,174 @@ class _RelationshipTile extends ConsumerWidget {
               style: TextStyle(
                   fontSize: 12,
                   color: Theme.of(context).colorScheme.primary)),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Gallery Tab ────────────────────────────────────────────────────────────────
+
+class _GalleryItem {
+  final Attachment attachment;
+  final DateTime eventDate;
+  _GalleryItem({required this.attachment, required this.eventDate});
+}
+
+class _GalleryTab extends StatelessWidget {
+  final AsyncValue<List<Event>> eventsAsync;
+
+  const _GalleryTab({required this.eventsAsync});
+
+  @override
+  Widget build(BuildContext context) {
+    return eventsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (events) {
+        // Collect all attachments + voice notes across all events, sorted by date
+        final items = <_GalleryItem>[];
+        for (final event in events) {
+          final attachments = Attachment.listFromJson(event.attachments);
+          for (final att in attachments) {
+            items.add(_GalleryItem(
+                attachment: att, eventDate: event.timestamp));
+          }
+          if (event.voiceNotePath != null) {
+            items.add(_GalleryItem(
+              attachment: Attachment(
+                id: 'voice_${event.id}',
+                path: event.voiceNotePath!,
+                type: AttachmentType.audio,
+                name: 'Voice note',
+              ),
+              eventDate: event.timestamp,
+            ));
+          }
+        }
+        // Sort newest first
+        items.sort((a, b) => b.eventDate.compareTo(a.eventDate));
+
+        if (items.isEmpty) {
+          return const EmptyState(
+            icon: Icons.photo_library_outlined,
+            title: 'No attachments yet',
+            subtitle: 'Files attached to events will appear here',
+          );
+        }
+
+        return GridView.builder(
+          padding: const EdgeInsets.all(4),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 2,
+            mainAxisSpacing: 2,
+          ),
+          itemCount: items.length,
+          itemBuilder: (_, i) => _GalleryCell(item: items[i]),
+        );
+      },
+    );
+  }
+}
+
+class _GalleryCell extends StatelessWidget {
+  final _GalleryItem item;
+
+  const _GalleryCell({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final att = item.attachment;
+    final scheme = Theme.of(context).colorScheme;
+
+    if (att.type == AttachmentType.image) {
+      return GestureDetector(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => Scaffold(
+              backgroundColor: Colors.black,
+              appBar: AppBar(
+                backgroundColor: Colors.black,
+                iconTheme: const IconThemeData(color: Colors.white),
+              ),
+              body: PhotoView(
+                  imageProvider: FileImage(File(att.path))),
+            ),
+          ),
+        ),
+        child: Image.file(File(att.path),
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _PlaceholderCell(
+                icon: Icons.broken_image_outlined, scheme: scheme)),
+      );
+    }
+
+    // Non-image: show icon tile, tap to open
+    IconData icon;
+    Color iconColor;
+    switch (att.type) {
+      case AttachmentType.video:
+        icon = Icons.videocam;
+        iconColor = Colors.blue;
+        break;
+      case AttachmentType.audio:
+        icon = Icons.mic;
+        iconColor = Colors.red;
+        break;
+      case AttachmentType.pdf:
+        icon = Icons.picture_as_pdf;
+        iconColor = Colors.orange;
+        break;
+      default:
+        icon = Icons.insert_drive_file;
+        iconColor = scheme.primary;
+    }
+
+    return GestureDetector(
+      onTap: () => OpenFilex.open(att.path),
+      child: _PlaceholderCell(
+        icon: icon,
+        iconColor: iconColor,
+        label: att.name,
+        scheme: scheme,
+      ),
+    );
+  }
+}
+
+class _PlaceholderCell extends StatelessWidget {
+  final IconData icon;
+  final Color? iconColor;
+  final String? label;
+  final ColorScheme scheme;
+
+  const _PlaceholderCell(
+      {required this.icon,
+      this.iconColor,
+      this.label,
+      required this.scheme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 32, color: iconColor ?? scheme.primary),
+          if (label != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Text(
+                label!,
+                style: const TextStyle(fontSize: 9),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+            ),
         ],
       ),
     );

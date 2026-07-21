@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:convert';
@@ -103,17 +104,25 @@ class _EntityCard extends ConsumerWidget {
               decoration: BoxDecoration(
                 color: color.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(12),
+                image: entity.profileImagePath != null
+                    ? DecorationImage(
+                        image: FileImage(File(entity.profileImagePath!)),
+                        fit: BoxFit.cover,
+                      )
+                    : null,
               ),
-              child: Center(
-                child: Text(
-                  entity.icon ?? entity.name[0].toUpperCase(),
-                  style: TextStyle(
-                    fontSize: entity.icon != null ? 22 : 18,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
-                ),
-              ),
+              child: entity.profileImagePath == null
+                  ? Center(
+                      child: Text(
+                        entity.icon ?? entity.name[0].toUpperCase(),
+                        style: TextStyle(
+                          fontSize: entity.icon != null ? 22 : 18,
+                          fontWeight: FontWeight.bold,
+                          color: color,
+                        ),
+                      ),
+                    )
+                  : null,
             ),
             const SizedBox(width: 12),
             Expanded(

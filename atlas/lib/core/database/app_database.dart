@@ -21,7 +21,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -29,6 +29,10 @@ class AppDatabase extends _$AppDatabase {
       if (from < 2) {
         await customStatement(
             'ALTER TABLE events ADD COLUMN title TEXT;');
+      }
+      if (from < 3) {
+        await customStatement(
+            'ALTER TABLE entities ADD COLUMN profile_image_path TEXT;');
       }
     },
   );
@@ -43,6 +47,9 @@ class AppDatabase extends _$AppDatabase {
 
   Future<Entity?> getEntityById(String id) =>
       (select(entities)..where((e) => e.id.equals(id))).getSingleOrNull();
+
+  Stream<Entity?> watchEntityById(String id) =>
+      (select(entities)..where((e) => e.id.equals(id))).watchSingleOrNull();
 
   Future<List<Entity>> searchEntities(String query) => (select(entities)
         ..where((e) =>
