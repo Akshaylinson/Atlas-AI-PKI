@@ -69,118 +69,113 @@ class EntityDetailScreen extends ConsumerWidget {
           ),
           body: DefaultTabController(
             length: 4,
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  color: color.withValues(alpha: 0.08),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 56,
-                            height: 56,
-                            decoration: BoxDecoration(
-                              color: color.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Center(
-                              child: Text(
-                                entity.icon ?? entity.name[0].toUpperCase(),
-                                style: TextStyle(
-                                  fontSize: entity.icon != null ? 28 : 22,
-                                  fontWeight: FontWeight.bold,
-                                  color: color,
+            child: NestedScrollView(
+              headerSliverBuilder: (context, _) => [
+                SliverToBoxAdapter(
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    color: color.withValues(alpha: 0.08),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                color: color.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  entity.icon ?? entity.name[0].toUpperCase(),
+                                  style: TextStyle(
+                                    fontSize: entity.icon != null ? 28 : 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: color,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(entity.name,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(entity.name,
                                         style: const TextStyle(
                                             fontSize: 20,
                                             fontWeight: FontWeight.bold)),
-                                    if (entity.isDecision) ...[
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: Colors.amber
-                                              .withValues(alpha: 0.2),
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                        ),
-                                        child: const Text('Decision',
-                                            style: TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.amber,
-                                                fontWeight:
-                                                    FontWeight.w600)),
+                                  ),
+                                  if (entity.isDecision) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.amber
+                                            .withValues(alpha: 0.2),
+                                        borderRadius:
+                                            BorderRadius.circular(8),
                                       ),
-                                    ],
+                                      child: const Text('Decision',
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.amber,
+                                              fontWeight: FontWeight.w600)),
+                                    ),
                                   ],
-                                ),
-                                if (entity.description != null)
-                                  Text(entity.description!,
-                                      style: TextStyle(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onSurface
-                                              .withValues(alpha: 0.7))),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      if (tags.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 10),
-                          child: Wrap(
-                            spacing: 6,
-                            children:
-                                tags.map((t) => TagChip(tag: t)).toList(),
-                          ),
+                          ],
                         ),
-                      const SizedBox(height: 8),
-                      Text('Created ${formatDate(entity.createdAt)}',
-                          style: TextStyle(
-                              fontSize: 11,
+                        if (entity.description != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: _ExpandableDescription(
+                              description: entity.description!,
                               color: Theme.of(context)
                                   .colorScheme
                                   .onSurface
-                                  .withValues(alpha: 0.5))),
-                    ],
+                                  .withValues(alpha: 0.7),
+                            ),
+                          ),
+                        if (tags.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Wrap(
+                              spacing: 6,
+                              children:
+                                  tags.map((t) => TagChip(tag: t)).toList(),
+                            ),
+                          ),
+                        const SizedBox(height: 8),
+                        Text('Created ${formatDate(entity.createdAt)}',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(alpha: 0.5))),
+                      ],
+                    ),
                   ),
                 ),
-                const TabBar(
-                  tabs: [
-                    Tab(text: 'Timeline'),
-                    Tab(text: 'Stats'),
-                    Tab(text: 'Graph'),
-                    Tab(text: 'Decision'),
-                  ],
-                ),
-                Expanded(
-                  child: TabBarView(
-                    children: [
-                      _TimelineTab(eventsAsync: eventsAsync),
-                      _StatsTab(statsAsync: statsAsync),
-                      _GraphTab(
-                          entityId: entityId, relsAsync: relsAsync),
-                      _DecisionTab(entity: entity),
-                    ],
-                  ),
+                const SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _TabBarDelegate(),
                 ),
               ],
+              body: TabBarView(
+                children: [
+                  _TimelineTab(eventsAsync: eventsAsync),
+                  _StatsTab(statsAsync: statsAsync),
+                  _GraphTab(entityId: entityId, relsAsync: relsAsync),
+                  _DecisionTab(entity: entity),
+                ],
+              ),
             ),
           ),
         );
@@ -211,6 +206,35 @@ class EntityDetailScreen extends ConsumerWidget {
       if (context.mounted) Navigator.pop(context);
     }
   }
+}
+
+// ── Tab Bar Delegate ─────────────────────────────────────────────────────────
+
+class _TabBarDelegate extends SliverPersistentHeaderDelegate {
+  const _TabBarDelegate();
+
+  @override
+  double get minExtent => 48;
+  @override
+  double get maxExtent => 48;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: const TabBar(
+        tabs: [
+          Tab(text: 'Timeline'),
+          Tab(text: 'Stats'),
+          Tab(text: 'Graph'),
+          Tab(text: 'Decision'),
+        ],
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(_TabBarDelegate oldDelegate) => false;
 }
 
 // ── Timeline Tab ──────────────────────────────────────────────────────────────
@@ -695,6 +719,55 @@ class _RelationshipTile extends ConsumerWidget {
                   color: Theme.of(context).colorScheme.primary)),
         ],
       ),
+    );
+  }
+}
+
+// ── Expandable Description ───────────────────────────────────────────────────
+
+class _ExpandableDescription extends StatefulWidget {
+  final String description;
+  final Color color;
+
+  const _ExpandableDescription(
+      {required this.description, required this.color});
+
+  @override
+  State<_ExpandableDescription> createState() =>
+      _ExpandableDescriptionState();
+}
+
+class _ExpandableDescriptionState extends State<_ExpandableDescription> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    const collapsedLines = 3;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.description,
+          style: TextStyle(color: widget.color),
+          maxLines: _expanded ? null : collapsedLines,
+          overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+        ),
+        if (widget.description.length > 120)
+          GestureDetector(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                _expanded ? 'Show less' : 'Show more',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w500),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
