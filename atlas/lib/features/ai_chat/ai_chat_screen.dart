@@ -174,6 +174,7 @@ class _ModelStatusBanner extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(gemmaServiceProvider);
+    final modelInstall = ref.watch(modelInstallProvider);
 
     if (state.isLoaded) return const SizedBox.shrink();
 
@@ -194,6 +195,27 @@ class _ModelStatusBanner extends ConsumerWidget {
               'Loading Gemma model, please wait…',
               style: TextStyle(fontSize: 12, color: Colors.blue),
             ),
+          ],
+        ),
+      );
+    }
+
+    // Model install is still resolving
+    if (modelInstall.isLoading) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        color: Colors.blue.withOpacity(0.1),
+        child: const Row(
+          children: [
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blue),
+            ),
+            SizedBox(width: 8),
+            Text('Initialising AI model…',
+                style: TextStyle(fontSize: 12, color: Colors.blue)),
           ],
         ),
       );
@@ -220,20 +242,51 @@ class _ModelStatusBanner extends ConsumerWidget {
       );
     }
 
+    // No model configured at all
+    final savedPath = modelInstall.value;
+    if (savedPath == null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        color: Colors.orange.withOpacity(0.1),
+        child: const Row(
+          children: [
+            Icon(Icons.info_outline, size: 16, color: Colors.orange),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Running in evidence-only mode. Configure Gemma model in Settings for full AI.',
+                style: TextStyle(fontSize: 12, color: Colors.orange),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Path is saved but model not loaded yet — trigger load
+    ref.listen(modelInstallProvider, (_, next) {
+      next.whenData((path) {
+        if (path != null && !ref.read(gemmaServiceProvider).isLoaded) {
+          ref.read(gemmaServiceProvider.notifier).loadModel(path);
+        }
+      });
+    });
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: Colors.orange.withOpacity(0.1),
-      child: Row(
+      child: const Row(
         children: [
-          const Icon(Icons.info_outline, size: 16, color: Colors.orange),
-          const SizedBox(width: 8),
-          const Expanded(
-            child: Text(
-              'Running in evidence-only mode. Configure Gemma model in Settings for full AI.',
-              style: TextStyle(fontSize: 12, color: Colors.orange),
-            ),
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
           ),
+          SizedBox(width: 8),
+          Text('Loading saved model…',
+              style: TextStyle(fontSize: 12, color: Colors.orange)),
         ],
       ),
     );

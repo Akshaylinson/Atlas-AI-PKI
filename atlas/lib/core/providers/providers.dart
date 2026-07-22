@@ -34,7 +34,11 @@ final decisionIntelligenceProvider = Provider<DecisionIntelligenceEngine>((ref) 
 
 final modelInstallerProvider = Provider<ModelInstaller>((ref) => ModelInstaller());
 
-final modelInstallProvider = FutureProvider<String?>((ref) {
+final modelInstallProvider = FutureProvider<String?>((ref) async {
+  // First try the user-saved path from DB
+  final savedPath = await ref.watch(databaseProvider).getSetting('gemma_model_path');
+  if (savedPath != null && savedPath.isNotEmpty) return savedPath;
+  // Fallback: try bundled asset install
   return ref.watch(modelInstallerProvider).ensureInstalled();
 });
 

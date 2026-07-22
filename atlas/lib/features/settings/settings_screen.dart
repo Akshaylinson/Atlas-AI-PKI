@@ -18,6 +18,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String? _modelPath;
   bool _loadingModel = false;
+  String _loadingStatus = '';
 
   @override
   void initState() {
@@ -37,18 +38,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       allowMultiple: false,
     );
     if (result == null || result.files.isEmpty) return;
-    final path = result.files.first.path;
-    if (path == null) return;
+    final pickedPath = result.files.first.path;
+    if (pickedPath == null) return;
 
-    setState(() => _loadingModel = true);
+    setState(() { _loadingModel = true; _loadingStatus = 'Copying model…'; });
+
+    // Copy from temp cache to permanent app storage so it survives across sessions
+    final docsDir = await getApplicationDocumentsDirectory();
+    final destPath = '${docsDir.path}/model.gguf';
+    try {
+      await File(pickedPath).copy(destPath);
+    } catch (e) {
+      if (mounted) {
+        setState(() { _loadingModel = false; _loadingStatus = ''; });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to copy model: $e'), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
+
+    setState(() => _loadingStatus = 'Loading model…');
     final db = ref.read(databaseProvider);
-    await db.setSetting('gemma_model_path', path);
-
-    await ref.read(gemmaServiceProvider.notifier).loadModel(path);
+    await db.setSetting('gemma_model_path', destPath);
+    await ref.read(gemmaServiceProvider.notifier).loadModel(destPath);
 
     setState(() {
-      _modelPath = path;
+      _modelPath = destPath;
       _loadingModel = false;
+      _loadingStatus = '';
     });
 
     if (mounted) {
@@ -170,10 +188,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   color: _modelPath != null ? Colors.green : Colors.orange),
             ),
             trailing: _loadingModel
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                      if (_loadingStatus.isNotEmpty)
+                        Text(_loadingStatus,
+                            style: const TextStyle(fontSize: 9)),
+                    ],
+                  )
                 : TextButton(
                     onPressed: _pickModel,
                     child: const Text('Browse'),
