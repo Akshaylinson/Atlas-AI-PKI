@@ -2,11 +2,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../app.dart';
 import '../../core/providers/providers.dart';
+import '../../core/services/atlas_package_service.dart';
 import '../search/search_screen.dart';
+import '../package/package_setup_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -19,11 +20,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String? _modelPath;
   bool _loadingModel = false;
   String _loadingStatus = '';
+  Map<String, dynamic> _packageMeta = {};
+  String? _packageDir;
 
   @override
   void initState() {
     super.initState();
     _loadModelPath();
+    _loadPackageInfo();
+  }
+
+  Future<void> _loadPackageInfo() async {
+    final meta = await AtlasPackageService.getPackageMeta();
+    final dir  = await AtlasPackageService.getActivePackageDir();
+    setState(() { _packageMeta = meta; _packageDir = dir; });
   }
 
   Future<void> _loadModelPath() async {
@@ -43,10 +53,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     setState(() { _loadingModel = true; _loadingStatus = 'Copying model…'; });
 
-    // Copy from temp cache to permanent app storage so it survives across sessions
-    final docsDir = await getApplicationDocumentsDirectory();
-    final destPath = '${docsDir.path}/model.gguf';
+    // Copy into the active Atlas package's models/ directory
+    final String destPath;
     try {
+      final modelsDir = await AtlasPackageService.getModelsDir();
+      destPath = '$modelsDir/model.gguf';
       await File(pickedPath).copy(destPath);
     } catch (e) {
       if (mounted) {
@@ -82,30 +93,54 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  Future<void> _exportData() async {
-    final db = ref.read(databaseProvider);
-    final entities = await db.getAllEntities();
-    final events = await db.getAllEvents();
-
-    final buffer = StringBuffer();
-    buffer.writeln('Atlas Data Export');
-    buffer.writeln('Generated: ${DateTime.now()}');
-    buffer.writeln('');
-    buffer.writeln('=== ENTITIES (${entities.length}) ===');
-    for (final e in entities) {
-      buffer.writeln('- ${e.name}: ${e.description ?? ''}');
+  Future<void> _exportPackage() async {
+    setState(() => _loadingStatus = 'Exporting…');
+    try {
+      final path = await AtlasPackageService.exportPackage();
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile(path)], text: 'Atlas Package Export'),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      setState(() => _loadingStatus = '');
     }
-    buffer.writeln('');
-    buffer.writeln('=== EVENTS (${events.length}) ===');
-    for (final e in events) {
-      buffer.writeln('[${e.timestamp}] ${e.note}');
+  }
+
+  Future<void> _importPackage() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.any);
+    if (result == null || result.files.isEmpty) return;
+    final path = result.files.first.path;
+    if (path == null) return;
+    setState(() => _loadingStatus = 'Importing…');
+    try {
+      await AtlasPackageService.importPackage(path);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Package imported. Restart the app to apply.')),
+        );
+        await _loadPackageInfo();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Import failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      setState(() => _loadingStatus = '');
     }
+  }
 
-    final dir = await getApplicationDocumentsDirectory();
-    final file = File('${dir.path}/atlas_export_${DateTime.now().millisecondsSinceEpoch}.txt');
-    await file.writeAsString(buffer.toString());
-
-    await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], text: 'Atlas Data Export'));
+  Future<void> _switchPackage() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const PackageSetupScreen()),
+    );
   }
 
   Future<void> _clearAllData() async {
@@ -227,14 +262,47 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
 
-          // Data
-          _SectionTitle(title: 'Data'),
+          // Atlas Package
+          _SectionTitle(title: 'Atlas Package'),
+          if (_packageMeta.isNotEmpty)
+            ListTile(
+              leading: const Icon(Icons.folder_special_outlined),
+              title: Text(_packageMeta['name'] as String? ?? 'Unknown'),
+              subtitle: Text(
+                _packageDir ?? '',
+                style: const TextStyle(fontSize: 11),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ListTile(
             leading: const Icon(Icons.upload_outlined),
-            title: const Text('Export Data'),
-            subtitle: const Text('Share a text export of all your data'),
-            onTap: _exportData,
+            title: const Text('Export Package'),
+            subtitle: const Text('Compress & share your .atlas package'),
+            trailing: _loadingStatus == 'Exporting…'
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.chevron_right),
+            onTap: _exportPackage,
           ),
+          ListTile(
+            leading: const Icon(Icons.download_outlined),
+            title: const Text('Import Package'),
+            subtitle: const Text('Restore from a .atlas file'),
+            trailing: _loadingStatus == 'Importing…'
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.chevron_right),
+            onTap: _importPackage,
+          ),
+          ListTile(
+            leading: const Icon(Icons.swap_horiz_outlined),
+            title: const Text('Switch Package'),
+            subtitle: const Text('Create or open a different package'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _switchPackage,
+          ),
+
+          // Data
+          _SectionTitle(title: 'Data'),
           ListTile(
             leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
             title: const Text('Clear All Data',

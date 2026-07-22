@@ -55,6 +55,9 @@ dependencies:
   # AI
   flutter_gemma: 0.8.1
 
+  # Package
+  archive: ^3.6.1
+
   # Utils
   uuid: ^4.4.0
   intl: ^0.20.0

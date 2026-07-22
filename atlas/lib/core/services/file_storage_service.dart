@@ -1,30 +1,36 @@
 import 'dart:io';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import 'package:mime/mime.dart';
 import '../models/models.dart';
+import '../services/atlas_package_service.dart';
 
 class FileStorageService {
   static const _uuid = Uuid();
 
-  Future<String> get _baseDir async {
-    final dir = await getApplicationDocumentsDirectory();
-    return p.join(dir.path, 'atlas_files');
-  }
-
   Future<Attachment> saveFile(File sourceFile, {String? customName}) async {
-    final base = await _baseDir;
-    final mimeType = lookupMimeType(sourceFile.path) ?? 'application/octet-stream';
+    final mimeType =
+        lookupMimeType(sourceFile.path) ?? 'application/octet-stream';
     final type = _typeFromMime(mimeType);
     final ext = p.extension(sourceFile.path);
     final id = _uuid.v4();
     final fileName = customName ?? '$id$ext';
 
-    final subDir = Directory(p.join(base, type.name));
-    await subDir.create(recursive: true);
+    final String baseDir;
+    if (type == AttachmentType.audio) {
+      baseDir = await AtlasPackageService.getAudioDir();
+    } else {
+      final attachDir = await AtlasPackageService.getAttachmentsDir();
+      final subFolder = type == AttachmentType.image
+          ? 'images'
+          : type == AttachmentType.pdf || type == AttachmentType.document
+              ? 'documents'
+              : 'others';
+      baseDir = p.join(attachDir, subFolder);
+    }
 
-    final destPath = p.join(subDir.path, fileName);
+    await Directory(baseDir).create(recursive: true);
+    final destPath = p.join(baseDir, fileName);
     await sourceFile.copy(destPath);
 
     return Attachment(

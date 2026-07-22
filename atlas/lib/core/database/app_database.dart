@@ -3,6 +3,7 @@ import 'package:drift/native.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'tables.dart';
 
 part 'app_database.g.dart';
@@ -205,8 +206,16 @@ class AppDatabase extends _$AppDatabase {
 
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
-    final dbFolder = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dbFolder.path, 'atlas.db'));
-    return NativeDatabase.createInBackground(file);
+    // Use active Atlas package dir if set, otherwise fall back to documents dir
+    final prefs = await SharedPreferences.getInstance();
+    final packageDir = prefs.getString('atlas_package_dir');
+    final String dbPath;
+    if (packageDir != null && Directory(packageDir).existsSync()) {
+      dbPath = p.join(packageDir, 'atlas.db');
+    } else {
+      final docsDir = await getApplicationDocumentsDirectory();
+      dbPath = p.join(docsDir.path, 'atlas.db');
+    }
+    return NativeDatabase.createInBackground(File(dbPath));
   });
 }
