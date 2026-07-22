@@ -222,19 +222,19 @@ class _ModelStatusBanner extends ConsumerWidget {
     }
 
     if (state.error != null) {
+      // Show as orange info, not red error — evidence mode is fully functional
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        color: Colors.red.withOpacity(0.1),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        color: Colors.orange.withOpacity(0.1),
+        child: const Row(
           children: [
-            const Icon(Icons.error_outline, size: 16, color: Colors.red),
-            const SizedBox(width: 8),
+            Icon(Icons.info_outline, size: 16, color: Colors.orange),
+            SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Gemma failed to load: ${state.error}',
-                style: const TextStyle(fontSize: 12, color: Colors.red),
+                'Running in evidence-only mode. Answers are based on your recorded data.',
+                style: TextStyle(fontSize: 12, color: Colors.orange),
               ),
             ),
           ],

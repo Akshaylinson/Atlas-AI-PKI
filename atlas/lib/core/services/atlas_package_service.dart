@@ -54,6 +54,15 @@ class AtlasPackageService {
     return d.path;
   }
 
+  /// Copies a model file into the active package's models/ directory.
+  /// Returns the destination path.
+  static Future<String> installModelFile(String sourcePath) async {
+    final modelsDir = await getModelsDir();
+    final dest = p.join(modelsDir, p.basename(sourcePath));
+    await File(sourcePath).copy(dest);
+    return dest;
+  }
+
   // ── Create ────────────────────────────────────────────────────────────────
 
   static Future<String> createNewPackage(String name) async {
