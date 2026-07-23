@@ -143,12 +143,12 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('AI Model Info'),
+        title: const Text('AI Assistant Info'),
         content: const Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Atlas uses a local Gemma model for reasoning.'),
+            Text('Atlas answers from your local knowledge base.'),
             SizedBox(height: 8),
             Text('• All processing happens on-device'),
             Text('• No data leaves your phone'),
@@ -182,7 +182,7 @@ class _ModelStatusChip extends ConsumerWidget {
     if (state.isLoaded) {
       color = Colors.green;
       icon = const Icon(Icons.check_circle, size: 13, color: Colors.green);
-      label = 'AI Ready';
+      label = 'KB ready';
     } else if (state.isLoading) {
       color = Colors.blue;
       icon = const SizedBox(
@@ -194,7 +194,7 @@ class _ModelStatusChip extends ConsumerWidget {
     } else {
       color = Colors.orange;
       icon = const Icon(Icons.info_outline, size: 13, color: Colors.orange);
-      label = 'Evidence only';
+      label = 'KB chat';
     }
 
     return Padding(
