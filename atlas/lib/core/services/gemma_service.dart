@@ -102,6 +102,7 @@ class GemmaService {
     EvidencePackage evidence,
   ) async {
     final byId = <String, Entity>{};
+    final normalizedQuery = _normalizeQuery(query);
 
     for (final entityId in evidence.entityIds.take(10)) {
       final entity = await _db.getEntityById(entityId);
@@ -115,30 +116,78 @@ class GemmaService {
       byId[entity.id] = entity;
     }
 
+    if (normalizedQuery != query) {
+      final normalizedMatches = await _db.searchEntities(normalizedQuery);
+      for (final entity in normalizedMatches) {
+        byId[entity.id] = entity;
+      }
+    }
+
+    final allEntities = await _db.getAllEntities();
+    for (final entity in allEntities) {
+      final score = _entityScore(entity, query, normalizedQuery);
+      if (score > 0) {
+        byId[entity.id] = entity;
+      }
+    }
+
     final entities = byId.values.toList();
-    entities.sort((a, b) => _entityScore(b, query).compareTo(_entityScore(a, query)));
+    entities.sort((a, b) =>
+        _entityScore(b, query, normalizedQuery).compareTo(_entityScore(a, query, normalizedQuery)));
     return entities;
   }
 
-  double _entityScore(Entity entity, String query) {
+  String _normalizeQuery(String query) {
+    var cleaned = query.toLowerCase().replaceAll(RegExp(r'[^a-z0-9\s]'), ' ');
+    const phrases = <String>[
+      'say about',
+      'tell me about',
+      'show me',
+      'what about',
+      'who is',
+      "who's",
+      'whos',
+      'describe',
+      'explain',
+      'give me details on',
+      'give me info on',
+      'information about',
+      'details about',
+    ];
+    for (final phrase in phrases) {
+      cleaned = cleaned.replaceAll(phrase, ' ');
+    }
+    cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return cleaned;
+  }
+
+  double _entityScore(Entity entity, String query, String normalizedQuery) {
     final q = query.toLowerCase().trim();
+    final nq = normalizedQuery.toLowerCase().trim();
     final name = entity.name.toLowerCase();
     final description = (entity.description ?? '').toLowerCase();
     final tags = entity.tags.toLowerCase();
 
-    if (q.isEmpty) {
+    if (q.isEmpty && nq.isEmpty) {
       return 0.0;
     }
-    if (name == q) return 100.0;
-    if (name.startsWith(q)) return 90.0;
-    if (name.contains(q)) return 80.0;
-    if (q.contains(name)) return 70.0;
-    if (description.contains(q) || tags.contains(q)) return 50.0;
+    if (name == q || name == nq) return 100.0;
+    if (name.startsWith(nq) || name.startsWith(q)) return 95.0;
+    if (name.contains(nq) || name.contains(q)) return 90.0;
+    if (nq.contains(name) || q.contains(name)) return 85.0;
+    if (description.contains(nq) || description.contains(q) || tags.contains(nq) || tags.contains(q)) {
+      return 50.0;
+    }
 
-    final qWords = q.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toSet();
+    final qWords = nq.isNotEmpty
+        ? nq.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toSet()
+        : q.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toSet();
     final nameWords = name.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toSet();
     final overlap = qWords.intersection(nameWords).length;
-    return overlap * 10.0;
+    if (overlap > 0) {
+      return overlap * 10.0;
+    }
+    return 0.0;
   }
 
   Future<Map<String, dynamic>> _buildEntityProfile(Entity entity) async {
