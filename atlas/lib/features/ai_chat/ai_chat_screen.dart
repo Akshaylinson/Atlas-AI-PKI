@@ -13,12 +13,14 @@ class AIChatScreen extends ConsumerStatefulWidget {
 class _AIChatScreenState extends ConsumerState<AIChatScreen> {
   final _inputCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
+  final _inputFocus = FocusNode();
   bool _sending = false;
 
   @override
   void dispose() {
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
+    _inputFocus.dispose();
     super.dispose();
   }
 
@@ -48,8 +50,10 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
   Widget build(BuildContext context) {
     final messages = ref.watch(aiChatProvider);
     final scheme = Theme.of(context).colorScheme;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: const Text('AI Assistant',
             style: TextStyle(fontWeight: FontWeight.bold)),
@@ -66,75 +70,88 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
 
-          // Messages
-          Expanded(
-            child: messages.isEmpty
-                ? _WelcomeView(onSuggestionTap: (q) {
-                    _inputCtrl.text = q;
-                    _send();
-                  })
-                : ListView.builder(
-                    controller: _scrollCtrl,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: messages.length + (_sending ? 1 : 0),
-                    itemBuilder: (_, i) {
-                      if (i == messages.length) {
-                        return const _TypingIndicator();
-                      }
-                      return _MessageBubble(message: messages[i]);
-                    },
-                  ),
-          ),
-
-          // Input
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              border: Border(
-                  top: BorderSide(color: scheme.outlineVariant.withOpacity(0.3))),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _inputCtrl,
-                    decoration: InputDecoration(
-                      hintText: 'Ask about your data...',
-                      isDense: true,
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24)),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
+            // Messages
+            Expanded(
+              child: messages.isEmpty
+                  ? _WelcomeView(onSuggestionTap: (q) {
+                      _inputCtrl.text = q;
+                      _inputFocus.requestFocus();
+                      _send();
+                    })
+                  : ListView.builder(
+                      controller: _scrollCtrl,
+                      padding: const EdgeInsets.all(16),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      itemCount: messages.length + (_sending ? 1 : 0),
+                      itemBuilder: (_, i) {
+                        if (i == messages.length) {
+                          return const _TypingIndicator();
+                        }
+                        return _MessageBubble(message: messages[i]);
+                      },
                     ),
-                    maxLines: 3,
-                    minLines: 1,
-                    onSubmitted: (_) => _send(),
-                    textInputAction: TextInputAction.send,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _sending ? null : _send,
-                  style: FilledButton.styleFrom(
-                    shape: const CircleBorder(),
-                    padding: const EdgeInsets.all(14),
-                  ),
-                  child: _sending
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.send),
-                ),
-              ],
             ),
-          ),
-        ],
+
+            // Input
+            AnimatedPadding(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.only(bottom: bottomInset),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  border: Border(
+                      top: BorderSide(color: scheme.outlineVariant.withOpacity(0.3))),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        focusNode: _inputFocus,
+                        controller: _inputCtrl,
+                        decoration: InputDecoration(
+                          hintText: 'Ask about your data...',
+                          isDense: true,
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24)),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 10),
+                        ),
+                        maxLines: 3,
+                        minLines: 1,
+                        keyboardType: TextInputType.multiline,
+                        onSubmitted: (_) => _send(),
+                        textInputAction: TextInputAction.send,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: _sending ? null : _send,
+                      style: FilledButton.styleFrom(
+                        shape: const CircleBorder(),
+                        padding: const EdgeInsets.all(14),
+                      ),
+                      child: _sending
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.send),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
