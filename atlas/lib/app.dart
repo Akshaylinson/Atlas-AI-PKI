@@ -58,3 +58,4 @@ class _StartupRouterState extends State<_StartupRouter> {
     return _hasPackage ? const MainShell() : const PackageSetupScreen();
   }
 }
+
