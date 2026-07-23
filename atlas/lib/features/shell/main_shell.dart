@@ -7,16 +7,13 @@ import '../events/events_screen.dart';
 import '../events/event_form_screen.dart';
 import '../ai_chat/ai_chat_screen.dart';
 import '../decisions/decisions_screen.dart';
-import '../search/search_screen.dart';
-import '../knowledge_graph/knowledge_graph_screen.dart';
-import '../patterns/patterns_screen.dart';
 
 final _navIndexProvider = StateProvider<int>((ref) => 0);
 
 class MainShell extends ConsumerWidget {
   const MainShell({super.key});
 
-  static final _screens = const [
+  static const _screens = [
     AnalyticsScreen(),
     EntitiesScreen(),
     EventsScreen(),
@@ -28,7 +25,7 @@ class MainShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final index = ref.watch(_navIndexProvider);
     return Scaffold(
-      body: IndexedStack(index: index, children: _screens),
+      body: _screens[index],
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (i) =>

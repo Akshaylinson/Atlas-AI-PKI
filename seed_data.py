@@ -26,6 +26,7 @@ import json
 import math
 import os
 import random
+import re
 import sqlite3
 import subprocess
 import sys
@@ -37,14 +38,19 @@ from pathlib import Path
 
 # The DB lives inside the active Atlas package directory.
 # path_provider on Android resolves getApplicationDocumentsDirectory() → app_flutter/
-DEVICE_PACKAGE_DIR = "app_flutter/atlas_packages/MyLife"
-DEVICE_DB_PATH = f"{DEVICE_PACKAGE_DIR}/atlas.db"
 LOCAL_DB = Path("atlas_seed.db")
 SEED_TAG = "SEED"          # written into every seeded row's tags so clean() can find them
 DAYS = 120
 BASE_DATE = datetime.now() - timedelta(days=DAYS)
+APP_ID = "com.atlas.atlas"
+DEFAULT_DEVICE_PACKAGE_NAME = "MyLife"
 
 random.seed(42)
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -80,6 +86,15 @@ def text_to_vector(text: str, dim=128) -> list:
         vec[hash(w) % dim] += 1.0
     mag = math.sqrt(sum(v * v for v in vec)) or 1.0
     return [v / mag for v in vec]
+
+
+def fresh_seed_db_path(preferred: Path = LOCAL_DB) -> Path:
+    """Return a writable seed DB path, avoiding stale locked files."""
+    try:
+        preferred.unlink(missing_ok=True)
+        return preferred
+    except PermissionError:
+        return preferred.with_name(f"{preferred.stem}_{uuid.uuid4().hex}{preferred.suffix}")
 
 # ── Entity definitions ────────────────────────────────────────────────────────
 
@@ -567,37 +582,105 @@ def write_db(path: Path):
     conn.commit()
     conn.close()
 
-    print(f"  ✓ {len(entity_rows)} entities")
-    print(f"  ✓ {len(event_rows)} events")
-    print(f"  ✓ {len(rel_rows)} relationships")
-    print(f"  ✓ {len(pattern_rows)} patterns")
-    print(f"  ✓ {len(stat_rows)} entity statistics")
-    print(f"  ✓ {len(emb_rows)} embeddings")
+    print(f"  OK {len(entity_rows)} entities")
+    print(f"  OK {len(event_rows)} events")
+    print(f"  OK {len(rel_rows)} relationships")
+    print(f"  OK {len(pattern_rows)} patterns")
+    print(f"  OK {len(stat_rows)} entity statistics")
+    print(f"  OK {len(emb_rows)} embeddings")
 
 # ── ADB helpers ───────────────────────────────────────────────────────────────
 
 def find_adb() -> str:
     """Return adb path, checking PATH then common Android SDK locations on Windows."""
     import shutil
+    explicit = os.environ.get("ADB_PATH")
+    if explicit:
+        explicit_path = Path(explicit)
+        if explicit_path.exists():
+            return str(explicit_path.resolve())
+
     found = shutil.which("adb")
     if found:
         return found
-    candidates = [
-        Path(os.environ.get("LOCALAPPDATA", "")) / "Android/Sdk/platform-tools/adb.exe",
-        Path(os.environ.get("APPDATA", ""))      / "../Local/Android/Sdk/platform-tools/adb.exe",
+
+    sdk_roots = [
+        os.environ.get("ANDROID_SDK_ROOT"),
+        os.environ.get("ANDROID_HOME"),
+        str(Path(os.environ.get("LOCALAPPDATA", "")) / "Android" / "Sdk"),
+        str(Path("E:/Android/Sdk")),
+        str(Path("C:/Android/Sdk")),
+        str(Path("C:/Android")),
+    ]
+
+    # Flutter often knows the SDK location even when PATH does not.
+    try:
+        doctor = subprocess.run(
+            ["flutter", "doctor", "-v"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        match = re.search(r"Android SDK at (.+)", doctor.stdout)
+        if match:
+            sdk_roots.insert(0, match.group(1).strip())
+    except OSError:
+        pass
+
+    candidates = []
+    for root in sdk_roots:
+        if root:
+            candidates.append(Path(root) / "platform-tools" / "adb.exe")
+
+    # A few direct fallback paths for common Windows installs.
+    candidates.extend([
         Path("C:/Users") / os.environ.get("USERNAME", "") / "AppData/Local/Android/Sdk/platform-tools/adb.exe",
         Path("C:/Android/platform-tools/adb.exe"),
         Path("C:/android-sdk/platform-tools/adb.exe"),
-    ]
+    ])
+
     for c in candidates:
         if c.exists():
             return str(c.resolve())
-    print("ERROR: adb not found. Add Android SDK platform-tools to PATH or set ADB_PATH env var.")
-    print("  e.g.  set ADB_PATH=C:\\Users\\YOU\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe")
+
+    print("ERROR: adb not found.")
+    print("  Set ADB_PATH or install Android SDK platform-tools.")
+    print("  Flutter reports your SDK at: E:\\Android\\Sdk")
+    print("  Example: set ADB_PATH=E:\\Android\\Sdk\\platform-tools\\adb.exe")
     sys.exit(1)
 
 ADB = os.environ.get("ADB_PATH") or find_adb()
 print(f"  Using adb: {ADB}")
+
+
+def device_shell(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run([ADB, "shell", "run-as", APP_ID, *args], capture_output=True, text=True)
+
+
+def get_device_package_dir() -> str:
+    """Return the app's active Atlas package directory on device."""
+    pref_key = "flutter.atlas_package_dir"
+    prefs = device_shell("cat", "shared_prefs/FlutterSharedPreferences.xml")
+    if prefs.returncode == 0:
+        match = re.search(rf'name="{re.escape(pref_key)}">([^<]+)</string>', prefs.stdout)
+        if match:
+            return match.group(1).strip()
+
+    # Fallbacks for fresh installs or missing prefs.
+    package_root = "app_flutter/atlas_packages"
+    listing = device_shell("ls", "-1", package_root)
+    if listing.returncode == 0:
+        dirs = [line.strip() for line in listing.stdout.splitlines() if line.strip()]
+        if DEFAULT_DEVICE_PACKAGE_NAME in dirs:
+            return f"{package_root}/{DEFAULT_DEVICE_PACKAGE_NAME}"
+        if dirs:
+            return f"{package_root}/{dirs[0]}"
+
+    return f"{package_root}/{DEFAULT_DEVICE_PACKAGE_NAME}"
+
+
+def get_device_db_path() -> str:
+    return f"{get_device_package_dir()}/atlas.db"
 
 def adb(*args):
     result = subprocess.run([ADB, *args], capture_output=True, text=True)
@@ -607,23 +690,26 @@ def adb(*args):
     return result.stdout.strip()
 
 def push():
-    print("Building seed database locally…")
-    write_db(LOCAL_DB)
+    print("Building seed database locally...")
+    seed_db = fresh_seed_db_path()
+    write_db(seed_db)
 
     # Ensure the package directory exists on device
-    adb("shell", "run-as com.atlas.atlas mkdir -p app_flutter/atlas_packages/MyLife")
+    device_db_path = get_device_db_path()
+    device_package_dir = device_db_path.rsplit("/atlas.db", 1)[0]
+    adb("shell", "run-as", APP_ID, "mkdir", "-p", device_package_dir)
 
-    print("Pulling app database from device…")
-    adb("shell", "run-as com.atlas.atlas cp app_flutter/atlas_packages/MyLife/atlas.db /data/local/tmp/atlas_live.db 2>/dev/null || true")
+    print("Pulling app database from device...")
+    adb("shell", "run-as", APP_ID, "sh", "-c", f"cp {device_db_path} /data/local/tmp/atlas_live.db 2>/dev/null || true")
     # If no DB exists yet on device, start from the seed directly
     result = subprocess.run([ADB, "shell", "ls /data/local/tmp/atlas_live.db"],
                             capture_output=True, text=True)
     if "No such file" in result.stdout or result.returncode != 0:
-        print("  No existing DB on device — using seed as base.")
-        adb("push", str(LOCAL_DB), "/data/local/tmp/atlas_live.db")
+        print("  No existing DB on device - using seed as base.")
+        adb("push", str(seed_db), "/data/local/tmp/atlas_live.db")
     else:
         adb("pull", "/data/local/tmp/atlas_live.db", "atlas_live.db")
-        print("Merging seed data into live database…")
+        print("Merging seed data into live database...")
         live = sqlite3.connect("atlas_live.db")
         lc   = live.cursor()
         lc.execute(f"ATTACH '{LOCAL_DB}' AS seed")
@@ -636,22 +722,23 @@ def push():
         adb("push", "atlas_live.db", "/data/local/tmp/atlas_live.db")
         Path("atlas_live.db").unlink(missing_ok=True)
 
-    print("Pushing database into Atlas package directory on device…")
-    adb("shell", "run-as com.atlas.atlas cp /data/local/tmp/atlas_live.db app_flutter/atlas_packages/MyLife/atlas.db")
+    print("Pushing database into Atlas package directory on device...")
+    adb("shell", "run-as", APP_ID, "cp", "/data/local/tmp/atlas_live.db", device_db_path)
 
     # Cleanup
-    LOCAL_DB.unlink(missing_ok=True)
+    seed_db.unlink(missing_ok=True)
     adb("shell", "rm -f /data/local/tmp/atlas_live.db")
 
-    print("✅ Seed data pushed to device. Restart the app to see the data.")
+    print("SUCCESS: Seed data pushed to device. Restart the app to see the data.")
 
 
 def clean():
-    print("Pulling app database from device…")
-    adb("shell", "run-as com.atlas.atlas cp app_flutter/atlas_packages/MyLife/atlas.db /data/local/tmp/atlas_live.db")
+    print("Pulling app database from device...")
+    device_db_path = get_device_db_path()
+    adb("shell", "run-as", APP_ID, "cp", device_db_path, "/data/local/tmp/atlas_live.db")
     adb("pull", "/data/local/tmp/atlas_live.db", "atlas_live.db")
 
-    print("Removing seeded rows…")
+    print("Removing seeded rows...")
     live = sqlite3.connect("atlas_live.db")
     lc   = live.cursor()
     lc.executescript(f"""
@@ -675,20 +762,20 @@ def clean():
     live.commit()
     live.close()
 
-    print("Pushing cleaned database back to device…")
+    print("Pushing cleaned database back to device...")
     adb("push", "atlas_live.db", "/data/local/tmp/atlas_live.db")
-    adb("shell", "run-as com.atlas.atlas cp /data/local/tmp/atlas_live.db app_flutter/atlas_packages/MyLife/atlas.db")
+    adb("shell", "run-as", APP_ID, "cp", "/data/local/tmp/atlas_live.db", device_db_path)
 
     Path("atlas_live.db").unlink(missing_ok=True)
     adb("shell", "rm /data/local/tmp/atlas_live.db")
-    print("✅ All seeded rows removed from device.")
+    print("SUCCESS: All seeded rows removed from device.")
 
 
 def local():
-    print("Building seed database locally…")
-    LOCAL_DB.unlink(missing_ok=True)
-    write_db(LOCAL_DB)
-    print(f"✅ Written to {LOCAL_DB.resolve()}")
+    print("Building seed database locally...")
+    seed_db = fresh_seed_db_path()
+    write_db(seed_db)
+    print(f"SUCCESS: Written to {seed_db.resolve()}")
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 

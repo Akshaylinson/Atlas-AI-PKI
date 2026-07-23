@@ -26,6 +26,7 @@ class _KnowledgeGraphScreenState
 
   final Map<String, Node> _nodeMap = {};
   bool _built = false;
+  bool _preparingGraph = false;
 
   @override
   Widget build(BuildContext context) {
@@ -55,9 +56,20 @@ class _KnowledgeGraphScreenState
               );
             }
 
+            if (!_built && !_preparingGraph) {
+              _preparingGraph = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted) return;
+                setState(() {
+                  _buildGraph(entities, rels);
+                  _built = true;
+                  _preparingGraph = false;
+                });
+              });
+            }
+
             if (!_built) {
-              _buildGraph(entities, rels);
-              _built = true;
+              return const Center(child: CircularProgressIndicator());
             }
 
             return Column(

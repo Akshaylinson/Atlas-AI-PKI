@@ -80,13 +80,7 @@ class GemmaServiceNotifier extends StateNotifier<_ModelState> {
 }
 
 final gemmaServiceProvider = StateNotifierProvider<GemmaServiceNotifier, _ModelState>((ref) {
-  final notifier = GemmaServiceNotifier(GemmaService(ref.watch(databaseProvider)));
-  ref.listen<AsyncValue<String?>>(modelInstallProvider, (_, next) {
-    next.whenData((path) {
-      if (path != null) notifier.loadModel(path);
-    });
-  });
-  return notifier;
+  return GemmaServiceNotifier(GemmaService(ref.watch(databaseProvider)));
 });
 
 final fileStorageProvider = Provider<FileStorageService>((ref) {
