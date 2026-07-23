@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/material.dart';
 import '../database/app_database.dart';
 import '../services/pki_pipeline.dart';
 import '../services/retrieval_engine.dart';
@@ -7,6 +8,10 @@ import '../services/decision_intelligence.dart';
 import '../services/gemma_service.dart';
 import '../services/file_storage_service.dart';
 import '../services/model_installer.dart';
+import '../services/model_loader.dart';
+
+
+final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.system);
 
 // ── Core Services ─────────────────────────────────────────────────────────────
 
@@ -35,10 +40,14 @@ final decisionIntelligenceProvider = Provider<DecisionIntelligenceEngine>((ref) 
 final modelInstallerProvider = Provider<ModelInstaller>((ref) => ModelInstaller());
 
 final modelInstallProvider = FutureProvider<String?>((ref) async {
-  // First try the user-saved path from DB
+  // First try the user-saved path from DB.
   final savedPath = await ref.watch(databaseProvider).getSetting('gemma_model_path');
-  if (savedPath != null && savedPath.isNotEmpty) return savedPath;
-  // Fallback: try bundled asset install
+  if (savedPath != null &&
+      savedPath.isNotEmpty &&
+      supportedGemmaModelExtensions.any(savedPath.toLowerCase().endsWith)) {
+    return savedPath;
+  }
+  // Fallback: try bundled asset install.
   return ref.watch(modelInstallerProvider).ensureInstalled();
 });
 
@@ -243,3 +252,5 @@ class DashboardStats {
     required this.highConfidencePatterns,
   });
 }
+
+

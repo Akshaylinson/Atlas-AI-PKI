@@ -53,6 +53,7 @@ dependencies:
   html: ^0.15.4
 
   # AI
+  flutter_gemma: ^0.8.1
 
   # Package
   archive: ^3.6.1

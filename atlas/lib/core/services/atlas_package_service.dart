@@ -70,7 +70,7 @@ class AtlasPackageService {
     final packagesRoot = Directory(p.join(appDir.path, 'atlas_packages'));
     await packagesRoot.create(recursive: true);
 
-    final safeName = name.replaceAll(RegExp(r'[^\w\s\-]'), '').trim();
+    final safeName = name.replaceAll(RegExp(r'[^\w\-]'), '_').trim();
     final packageDir = Directory(p.join(packagesRoot.path, safeName));
     await packageDir.create(recursive: true);
 

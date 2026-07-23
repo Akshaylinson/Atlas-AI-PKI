@@ -1,13 +1,15 @@
-import 'package:flutter/services.dart';
+import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:flutter_gemma/core/model.dart';
+import 'package:flutter_gemma/pigeon.g.dart';
+
+const supportedGemmaModelExtensions = <String>{'.task', '.bin'};
 
 class ModelLoader {
-  static const _ch = MethodChannel('com.atlas.atlas/llama');
-
-  bool _loaded = false;
+  InferenceModel? _model;
   bool _loading = false;
   String? _error;
 
-  bool get isLoaded => _loaded;
+  bool get isLoaded => _model != null;
   bool get isLoading => _loading;
   String? get loadError => _error;
 
@@ -15,18 +17,28 @@ class ModelLoader {
     _loading = true;
     _error = null;
     try {
-      await _ch.invokeMethod('unloadModel');
-      final ok = await _ch.invokeMethod<bool>('loadModel', {'path': modelPath});
-      _loaded = ok == true;
-      if (!_loaded) _error = 'Native model load returned false';
-      return _loaded;
-    } on PlatformException catch (e) {
-      _error = e.message ?? e.code;
-      _loaded = false;
-      return false;
+      final lowerPath = modelPath.toLowerCase();
+      if (!supportedGemmaModelExtensions.any(lowerPath.endsWith)) {
+        throw ArgumentError(
+          'Unsupported model format. Use a .task or .bin file.',
+        );
+      }
+
+      // Close any existing model first
+      await _model?.close();
+      _model = null;
+
+      final gemma = FlutterGemmaPlugin.instance;
+      await gemma.modelManager.setModelPath(modelPath);
+      _model = await gemma.createModel(
+        modelType: ModelType.gemmaIt,
+        maxTokens: 1024,
+        preferredBackend: PreferredBackend.cpu,
+      );
+      return true;
     } catch (e) {
       _error = e.toString();
-      _loaded = false;
+      _model = null;
       return false;
     } finally {
       _loading = false;
@@ -34,22 +46,20 @@ class ModelLoader {
   }
 
   Future<String> generate(String prompt) async {
-    if (!_loaded) throw StateError('Model not loaded');
+    if (_model == null) throw StateError('Model not loaded');
+    final session = await _model!.createSession();
     try {
-      final text = await _ch.invokeMethod<String>(
-        'generate',
-        {'prompt': prompt, 'maxTokens': 512},
-      );
-      return (text ?? '').trim();
-    } on PlatformException catch (e) {
-      throw Exception(e.message ?? e.code);
+      await session.addQueryChunk(Message(text: prompt, isUser: true));
+      final response = await session.getResponse();
+      return response ?? '';
+    } finally {
+      await session.close();
     }
   }
 
   Future<void> dispose() async {
-    if (_loaded) {
-      await _ch.invokeMethod('unloadModel');
-      _loaded = false;
-    }
+    await _model?.close();
+    _model = null;
   }
 }
+

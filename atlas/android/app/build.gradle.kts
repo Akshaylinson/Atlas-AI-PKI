@@ -21,19 +21,10 @@ android {
 
     defaultConfig {
         applicationId = "com.atlas.atlas"
-        minSdk = flutter.minSdkVersion
+        minSdk = 29
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        ndk { abiFilters += listOf("arm64-v8a"); abiFilters.remove("armeabi-v7a"); abiFilters.remove("x86"); abiFilters.remove("x86_64") }
-        externalNativeBuild { cmake { cppFlags += "-std=c++17"; abiFilters("arm64-v8a") } }
-    }
-
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
-        }
     }
 
     buildTypes {

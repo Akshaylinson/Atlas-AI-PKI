@@ -8,7 +8,6 @@ import '../events/event_form_screen.dart';
 import '../ai_chat/ai_chat_screen.dart';
 import '../decisions/decisions_screen.dart';
 import '../search/search_screen.dart';
-import '../settings/settings_screen.dart';
 import '../knowledge_graph/knowledge_graph_screen.dart';
 import '../patterns/patterns_screen.dart';
 

@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'shared/theme/app_theme.dart';
+import 'core/providers/providers.dart';
 import 'features/shell/main_shell.dart';
 import 'features/package/package_setup_screen.dart';
 import 'core/services/atlas_package_service.dart';
-
-final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.system);
 
 class AtlasApp extends ConsumerWidget {
   const AtlasApp({super.key});

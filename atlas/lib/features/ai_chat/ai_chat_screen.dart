@@ -54,6 +54,7 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
         title: const Text('AI Assistant',
             style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
+          _ModelStatusChip(),
           IconButton(
             icon: const Icon(Icons.delete_sweep_outlined),
             tooltip: 'Clear chat',
@@ -67,8 +68,6 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
       ),
       body: Column(
         children: [
-          // Model status banner
-          _ModelStatusBanner(),
 
           // Messages
           Expanded(
@@ -170,124 +169,57 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
   }
 }
 
-class _ModelStatusBanner extends ConsumerWidget {
+// Persistent AppBar chip showing AI model status at all times
+class _ModelStatusChip extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(gemmaServiceProvider);
-    final modelInstall = ref.watch(modelInstallProvider);
 
-    if (state.isLoaded) return const SizedBox.shrink();
+    final Color color;
+    final Widget icon;
+    final String label;
 
-    if (state.isLoading) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        color: Colors.blue.withOpacity(0.1),
-        child: const Row(
-          children: [
-            SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blue),
-            ),
-            SizedBox(width: 8),
-            Text(
-              'Loading Gemma model, please wait…',
-              style: TextStyle(fontSize: 12, color: Colors.blue),
-            ),
-          ],
-        ),
+    if (state.isLoaded) {
+      color = Colors.green;
+      icon = const Icon(Icons.check_circle, size: 13, color: Colors.green);
+      label = 'AI Ready';
+    } else if (state.isLoading) {
+      color = Colors.blue;
+      icon = const SizedBox(
+        width: 11,
+        height: 11,
+        child: CircularProgressIndicator(strokeWidth: 1.8, color: Colors.blue),
       );
+      label = 'Loading…';
+    } else {
+      color = Colors.orange;
+      icon = const Icon(Icons.info_outline, size: 13, color: Colors.orange);
+      label = 'Evidence only';
     }
 
-    // Model install is still resolving
-    if (modelInstall.isLoading) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        color: Colors.blue.withOpacity(0.1),
-        child: const Row(
-          children: [
-            SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blue),
-            ),
-            SizedBox(width: 8),
-            Text('Initialising AI model…',
-                style: TextStyle(fontSize: 12, color: Colors.blue)),
-          ],
-        ),
-      );
-    }
-
-    if (state.error != null) {
-      // Show as orange info, not red error — evidence mode is fully functional
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        color: Colors.orange.withOpacity(0.1),
-        child: const Row(
-          children: [
-            Icon(Icons.info_outline, size: 16, color: Colors.orange),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Running in evidence-only mode. Answers are based on your recorded data.',
-                style: TextStyle(fontSize: 12, color: Colors.orange),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // No model configured at all
-    final savedPath = modelInstall.value;
-    if (savedPath == null) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        color: Colors.orange.withOpacity(0.1),
-        child: const Row(
-          children: [
-            Icon(Icons.info_outline, size: 16, color: Colors.orange),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Running in evidence-only mode. Configure Gemma model in Settings for full AI.',
-                style: TextStyle(fontSize: 12, color: Colors.orange),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Path is saved but model not loaded yet — trigger load
-    ref.listen(modelInstallProvider, (_, next) {
-      next.whenData((path) {
-        if (path != null && !ref.read(gemmaServiceProvider).isLoaded) {
-          ref.read(gemmaServiceProvider.notifier).loadModel(path);
-        }
-      });
-    });
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Colors.orange.withOpacity(0.1),
-      child: const Row(
-        children: [
-          SizedBox(
-            width: 14,
-            height: 14,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.4)),
           ),
-          SizedBox(width: 8),
-          Text('Loading saved model…',
-              style: TextStyle(fontSize: 12, color: Colors.orange)),
-        ],
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              icon,
+              const SizedBox(width: 4),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: color,
+                      fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
       ),
     );
   }

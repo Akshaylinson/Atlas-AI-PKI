@@ -8,7 +8,6 @@ import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/utils.dart';
 import '../knowledge_graph/knowledge_graph_screen.dart';
 import '../patterns/patterns_screen.dart';
-import '../settings/settings_screen.dart';
 
 class AnalyticsScreen extends ConsumerWidget {
   const AnalyticsScreen({super.key});
@@ -33,11 +32,6 @@ class AnalyticsScreen extends ConsumerWidget {
             tooltip: 'Patterns',
             onPressed: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const PatternsScreen())),
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const SettingsScreen())),
           ),
         ],
       ),
@@ -271,3 +265,4 @@ class _ImportanceDot extends StatelessWidget {
     );
   }
 }
+

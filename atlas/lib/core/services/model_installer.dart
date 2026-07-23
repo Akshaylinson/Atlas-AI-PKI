@@ -1,45 +1,31 @@
-import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/services.dart';
-import 'package:path/path.dart' as p;
 import 'atlas_package_service.dart';
 
-const _assetBase = 'assets/models/gemma';
-
 class ModelInstaller {
-  /// Returns the model.gguf path from the active Atlas package's models/ dir,
-  /// falling back to the bundled asset support files if needed.
-  /// Returns null if no model is found.
+  /// Returns the model path if a supported model file exists in the active
+  /// package's models/ directory, otherwise null.
   Future<String?> ensureInstalled() async {
     try {
       final modelsDir = await AtlasPackageService.getModelsDir();
-      final modelPath = p.join(modelsDir, 'model.gguf');
+      final dir = Directory(modelsDir);
+      if (!dir.existsSync()) return null;
 
-      if (!File(modelPath).existsSync()) return null;
+      final models = dir
+          .listSync()
+          .whereType<File>()
+          .where((f) =>
+              f.path.endsWith('.task') ||
+              f.path.endsWith('.bin'))
+          .toList();
 
-      // Copy small support files from assets if missing
-      for (final file in ['tokenizer.json', 'config.json', 'metadata.json']) {
-        final dest = File(p.join(modelsDir, file));
-        if (!dest.existsSync()) {
-          try {
-            final bytes = await rootBundle.load('$_assetBase/$file');
-            await dest.writeAsBytes(bytes.buffer.asUint8List(), flush: true);
-          } catch (_) {}
-        }
-      }
-
-      return modelPath;
+      if (models.isEmpty) return null;
+      return models.first.path;
     } catch (_) {
       return null;
     }
   }
-
-  Future<String> bundledVersion() async {
-    try {
-      final raw = await rootBundle.loadString('$_assetBase/metadata.json');
-      return (jsonDecode(raw) as Map<String, dynamic>)['version'] as String? ?? '';
-    } catch (_) {
-      return '';
-    }
-  }
 }
+
+
+
+
