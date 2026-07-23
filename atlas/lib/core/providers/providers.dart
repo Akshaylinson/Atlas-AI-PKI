@@ -199,8 +199,14 @@ class AIChatNotifier extends StateNotifier<List<ChatMessage>> {
     );
     state = [...state, userMsg];
 
+    // Build history from current messages (excluding the one just added).
+    final history = state
+        .where((m) => m.id != userMsg.id)
+        .map((m) => {'role': m.isUser ? 'user' : 'assistant', 'text': m.text})
+        .toList();
+
     try {
-      final response = await _gemma.query(text);
+      final response = await _gemma.query(text, history: history);
       final aiMsg = ChatMessage(
         id: '${DateTime.now().millisecondsSinceEpoch}_ai',
         text: response.answer,

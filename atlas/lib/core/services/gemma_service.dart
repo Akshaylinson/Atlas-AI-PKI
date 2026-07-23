@@ -3,9 +3,12 @@ import '../models/models.dart';
 import 'decision_intelligence.dart';
 import 'model_loader.dart';
 import 'retrieval_engine.dart';
+import '../../shared/utils/utils.dart';
 
 /// Local AI layer.
 /// Answers are grounded in the Atlas knowledge base.
+enum _QuestionIntent { relationship, decision, trend, profile, general }
+
 class GemmaService {
   final AppDatabase _db;
   final RetrievalEngine _retrieval;
@@ -23,10 +26,14 @@ class GemmaService {
 
   Future<bool> loadModel(String installDir) => _loader.load(installDir);
 
-  Future<AIResponse> query(String userQuestion) async {
-    final evidence = await _retrieval.retrieve(userQuestion);
-    final context = await _buildContext(userQuestion, evidence);
-    final responseText = _buildResponse(userQuestion, evidence, context);
+  Future<AIResponse> query(
+    String userQuestion, {
+    List<Map<String, String>> history = const [],
+  }) async {
+    final resolvedQuestion = await _resolveWithHistory(userQuestion, history);
+    final evidence = await _retrieval.retrieve(resolvedQuestion);
+    final context = await _buildContext(resolvedQuestion, evidence);
+    final responseText = _buildResponse(resolvedQuestion, evidence, context);
 
     return AIResponse(
       question: userQuestion,
@@ -35,6 +42,48 @@ class GemmaService {
       context: context,
       timestamp: DateTime.now(),
     );
+  }
+
+  /// Resolves pronouns and vague references using conversation history.
+  /// If the current question has no direct entity match, injects the last
+  /// clearly-named entity from prior turns into the query.
+  Future<String> _resolveWithHistory(
+    String question,
+    List<Map<String, String>> history,
+  ) async {
+    if (history.isEmpty) return question;
+
+    // Check if the current question already resolves to an entity on its own.
+    final directMatches = await _db.searchEntities(question);
+    final allEntities = await _db.getAllEntities();
+    final hasDirectMatch = directMatches.isNotEmpty ||
+        allEntities.any((e) => _entityScore(e, question, _normalizeQuery(question)) > 0);
+    if (hasDirectMatch) return question;
+
+    // Walk history newest-first to find the last entity that was clearly named.
+    final userTurns = history.reversed
+        .where((m) => m['role'] == 'user')
+        .map((m) => m['text'] ?? '')
+        .toList();
+
+    for (final pastQuery in userTurns) {
+      final matches = await _db.searchEntities(pastQuery);
+      if (matches.isNotEmpty) {
+        // Inject the resolved entity name as context prefix.
+        return '${matches.first.name}: $question';
+      }
+      final normalized = _normalizeQuery(pastQuery);
+      final scored = allEntities
+          .where((e) => _entityScore(e, pastQuery, normalized) > 0)
+          .toList();
+      if (scored.isNotEmpty) {
+        scored.sort((a, b) => _entityScore(b, pastQuery, normalized)
+            .compareTo(_entityScore(a, pastQuery, normalized)));
+        return '${scored.first.name}: $question';
+      }
+    }
+
+    return question;
   }
 
   Future<Map<String, dynamic>> _buildContext(
@@ -293,117 +342,376 @@ class GemmaService {
     final totalDecisions = best['totalDecisions'] as int? ?? 0;
     final avgMood = (best['avgMoodScore'] as num?)?.toDouble() ?? 0.0;
     final avgImportance = (best['avgImportance'] as num?)?.toDouble() ?? 0.0;
-    final lastEventAt = best['lastEventAt'] as String?;
+    final lastEventAt = _safeDateLabel(best['lastEventAt'] as String?);
     final intelligence = best['intelligence'] as Map<String, dynamic>?;
     final relationships = (best['relationships'] as List?) ?? [];
-    final decisionEvents = (best['decisionEvents'] as List?) ?? [];
     final recentEvents = (best['recentEvents'] as List?) ?? [];
+    final intent = _detectIntent(query);
+    final relationshipNature = _inferRelationshipNature(relationships);
+    final confidence = _estimateConfidence(best, evidence, matchedEntities, intent);
+    final confidenceText = confidenceLabel(confidence);
+    final confidencePct = (confidence * 100).round();
 
     final sb = StringBuffer();
-    sb.writeln('I found $name in your knowledge base.');
+    sb.writeln(_openingLine(intent, name, relationshipNature));
     sb.writeln('');
 
-    if (description.isNotEmpty) {
-      sb.writeln('Summary');
-      sb.writeln('- $description');
+    if (intent == _QuestionIntent.relationship) {
+      sb.writeln('Short answer');
+      if (relationshipNature == 'personal') {
+        sb.writeln('- Your records point to a personal relationship with $name.');
+      } else if (relationshipNature == 'professional') {
+        sb.writeln('- Your records point mostly to a professional relationship with $name.');
+      } else {
+        sb.writeln('- Your records point to a mixed or unclear relationship with $name.');
+      }
       sb.writeln('');
-    }
-
-    sb.writeln('Profile');
-    sb.writeln('- Status: $status');
-    sb.writeln('- Total events: $totalEvents');
-    sb.writeln('- Total decisions: $totalDecisions');
-    sb.writeln('- Average mood: ${avgMood.toStringAsFixed(2)}');
-    sb.writeln('- Average importance: ${avgImportance.toStringAsFixed(2)}');
-    if (lastEventAt != null) {
-      sb.writeln('- Last activity: $lastEventAt');
-    }
-    if (intelligence != null) {
-      final trend = intelligence['trend'];
-      final riskLevel = intelligence['riskLevel'];
-      final evidenceStrength = (intelligence['evidenceStrength'] as num?)?.toDouble() ?? 0.0;
-      sb.writeln('- Trend: $trend');
-      sb.writeln('- Risk level: $riskLevel');
-      sb.writeln('- Evidence strength: ${evidenceStrength.toStringAsFixed(2)}');
-    }
-    sb.writeln('');
-
-    sb.writeln('Relationships');
-    if (relationships.isEmpty) {
-      sb.writeln('- No relationships are recorded yet for $name.');
+      sb.writeln('Why I think that');
+      sb.writeln('- Relationship type: $relationshipNature');
+      sb.writeln('- Total events: $totalEvents');
+      sb.writeln('- Decision records: $totalDecisions');
+      sb.writeln('- Average mood: ${avgMood.toStringAsFixed(2)}');
+      sb.writeln('- Average importance: ${avgImportance.toStringAsFixed(2)}');
+      if (description.isNotEmpty) {
+        sb.writeln('- Profile note: $description');
+      }
+      if (lastEventAt != 'Unknown date') {
+        sb.writeln('- Last activity: $lastEventAt');
+      }
+      sb.writeln('');
+      _writeRelationshipEvidence(sb, relationships, recentEvents, patterns, best);
+    } else if (intent == _QuestionIntent.decision) {
+      sb.writeln('Short answer');
+      sb.writeln('- This looks like a decision that needs more evidence before you act.');
+      sb.writeln('');
+      sb.writeln('Evidence');
+      sb.writeln('- Entity: $name');
+      sb.writeln('- Relationship type: $relationshipNature');
+      sb.writeln('- Total events: $totalEvents');
+      sb.writeln('- Decision records: $totalDecisions');
+      sb.writeln('- Average mood: ${avgMood.toStringAsFixed(2)}');
+      sb.writeln('- Average importance: ${avgImportance.toStringAsFixed(2)}');
+      if (lastEventAt != 'Unknown date') {
+        sb.writeln('- Last activity: $lastEventAt');
+      }
+      sb.writeln('');
+      _writeRelationshipEvidence(sb, relationships, recentEvents, patterns, best);
+    } else if (intent == _QuestionIntent.trend) {
+      final trend = intelligence?['trend'] as String? ?? 'Stable';
+      sb.writeln('Trend summary');
+      sb.writeln('- $name is trending $trend based on the recorded activity.');
+      sb.writeln('- Total events: $totalEvents');
+      sb.writeln('- Average mood: ${avgMood.toStringAsFixed(2)}');
+      sb.writeln('- Average importance: ${avgImportance.toStringAsFixed(2)}');
+      if (lastEventAt != 'Unknown date') {
+        sb.writeln('- Last activity: $lastEventAt');
+      }
+      sb.writeln('');
+      _writeRelationshipEvidence(sb, relationships, recentEvents, patterns, best);
     } else {
-      for (final rel in relationships.take(5)) {
+      sb.writeln('Summary');
+      if (description.isNotEmpty) {
+        sb.writeln('- $description');
+      }
+      sb.writeln('- Status: $status');
+      sb.writeln('- Relationship type: $relationshipNature');
+      sb.writeln('- Total events: $totalEvents');
+      sb.writeln('- Decision records: $totalDecisions');
+      sb.writeln('- Average mood: ${avgMood.toStringAsFixed(2)}');
+      sb.writeln('- Average importance: ${avgImportance.toStringAsFixed(2)}');
+      if (lastEventAt != 'Unknown date') {
+        sb.writeln('- Last activity: $lastEventAt');
+      }
+      if (intelligence != null) {
+        sb.writeln('- Trend: ${intelligence['trend']}');
+        sb.writeln('- Risk level: ${intelligence['riskLevel']}');
+      }
+      sb.writeln('');
+      _writeRelationshipEvidence(sb, relationships, recentEvents, patterns, best);
+    }
+
+    sb.writeln('Confidence');
+    sb.writeln('- $confidenceText ($confidencePct%)');
+    sb.writeln('- Evidence coverage: ${stats['totalRelevantEvents'] ?? 0} events, ${stats['totalRelevantEntities'] ?? 0} entities');
+
+    return sb.toString().trim();
+  }
+
+  String _openingLine(
+    _QuestionIntent intent,
+    String name,
+    String relationshipNature,
+  ) {
+    switch (intent) {
+      case _QuestionIntent.relationship:
+        if (relationshipNature == 'personal') {
+          return 'I found $name, and your records point to a personal relationship.';
+        }
+        if (relationshipNature == 'professional') {
+          return 'I found $name, and your records point mostly to a professional relationship.';
+        }
+        return 'I found $name, but the relationship type is still mixed or unclear.';
+      case _QuestionIntent.decision:
+        return 'I found $name, and this looks like a decision question.';
+      case _QuestionIntent.trend:
+        return 'I found $name, and I can summarize the trend from your records.';
+      case _QuestionIntent.profile:
+      case _QuestionIntent.general:
+        return 'I found $name in your knowledge base.';
+    }
+  }
+
+  _QuestionIntent _detectIntent(String query) {
+    final q = query.toLowerCase();
+    if (_containsAny(q, const [
+      'relationship',
+      'partner',
+      'dating',
+      'date',
+      'marry',
+      'married',
+      'boyfriend',
+      'girlfriend',
+      'husband',
+      'wife',
+      'love',
+      'crush',
+      'standards',
+      'deserve',
+      'compatible',
+      'compatibility',
+    ])) {
+      return _QuestionIntent.relationship;
+    }
+
+    if (_containsAny(q, const [
+      'should i',
+      'should we',
+      'recommend',
+      'decision',
+      'choose',
+      'decide',
+      'whether',
+      'worth',
+      'take',
+      'accept',
+      'reject',
+      'make',
+      'move',
+      'next step',
+    ])) {
+      return _QuestionIntent.decision;
+    }
+
+    if (_containsAny(q, const [
+      'trend',
+      'trending',
+      'change',
+      'changed',
+      'over time',
+      'recent',
+      'this month',
+      'this week',
+      'last week',
+      'last month',
+      'pattern',
+      'history',
+      'timeline',
+      'progress',
+      'increase',
+      'decrease',
+    ])) {
+      return _QuestionIntent.trend;
+    }
+
+    if (_containsAny(q, const [
+      'who is',
+      'tell me about',
+      'say about',
+      'describe',
+      'explain',
+      'what is',
+      'summary',
+      'details about',
+      'info on',
+      'information about',
+    ])) {
+      return _QuestionIntent.profile;
+    }
+
+    return _QuestionIntent.general;
+  }
+
+  bool _containsAny(String value, List<String> phrases) {
+    for (final phrase in phrases) {
+      if (value.contains(phrase)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  String _inferRelationshipNature(List relationships) {
+    var personalScore = 0;
+    var professionalScore = 0;
+
+    for (final rel in relationships) {
+      final type = (rel['relationshipType'] as String? ?? '').toLowerCase();
+      final description = (rel['description'] as String? ?? '').toLowerCase();
+      final combined = '$type $description';
+
+      if (_containsAny(combined, const [
+        'friend',
+        'partner',
+        'spouse',
+        'dating',
+        'romantic',
+        'love',
+        'family',
+        'wife',
+        'husband',
+      ])) {
+        personalScore += 2;
+      }
+
+      if (_containsAny(combined, const [
+        'manage',
+        'manager',
+        'reports_to',
+        'report_to',
+        'coworker',
+        'colleague',
+        'project',
+        'team',
+        'work',
+        'client',
+        'influence',
+        'part_of',
+      ])) {
+        professionalScore += 2;
+      }
+    }
+
+    if (personalScore > professionalScore) return 'personal';
+    if (professionalScore > personalScore) return 'professional';
+    return 'mixed';
+  }
+
+  double _estimateConfidence(
+    Map<String, dynamic> best,
+    EvidencePackage evidence,
+    List matchedEntities,
+    _QuestionIntent intent,
+  ) {
+    var score = 0.35;
+
+    if ((best['name'] as String?)?.isNotEmpty ?? false) {
+      score += 0.15;
+    }
+    if (evidence.eventIds.isNotEmpty) {
+      score += (evidence.eventIds.length.clamp(0, 20) / 20.0) * 0.15;
+    }
+    if (evidence.entityIds.isNotEmpty) {
+      score += (evidence.entityIds.length.clamp(0, 10) / 10.0) * 0.1;
+    }
+    if ((best['relationships'] as List?)?.isNotEmpty ?? false) {
+      score += 0.1;
+    }
+    if ((best['recentEvents'] as List?)?.isNotEmpty ?? false) {
+      score += 0.1;
+    }
+    if ((best['decisionEvents'] as List?)?.isNotEmpty ?? false) {
+      score += 0.05;
+    }
+    if (matchedEntities.length > 1) {
+      score += 0.05;
+    }
+    if (intent == _QuestionIntent.relationship || intent == _QuestionIntent.decision) {
+      score += 0.05;
+    }
+
+    return score.clamp(0.0, 0.98);
+  }
+
+  String _safeDateLabel(String? iso) {
+    if (iso == null || iso.isEmpty) return 'Unknown date';
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return 'Unknown date';
+    final currentYear = DateTime.now().year;
+    if (dt.year < 1970 || dt.year > currentYear + 5) {
+      return 'Unknown date';
+    }
+    return formatDate(dt);
+  }
+
+  void _writeRelationshipEvidence(
+    StringBuffer sb,
+    List relationships,
+    List recentEvents,
+    List patterns,
+    Map<String, dynamic> best,
+  ) {
+    sb.writeln('Evidence');
+
+    final hasDecisionReasoning = _hasText(best['decisionReasoning']);
+    final hasDecisionExpected = _hasText(best['decisionExpectedOutcome']);
+    final hasDecisionActual = _hasText(best['decisionActualOutcome']);
+    final hasDecisionReview = _hasText(best['decisionReviewDate']);
+
+    if (relationships.isNotEmpty) {
+      sb.writeln('- Relationships');
+      for (final rel in relationships.take(4)) {
         final otherName = rel['otherEntityName'] as String? ?? 'unknown';
         final relType = rel['relationshipType'] as String? ?? 'related_to';
         final strength = (rel['strength'] as num?)?.toDouble() ?? 0.0;
-        final relDesc = rel['description'] as String?;
-        final detail = relDesc != null && relDesc.trim().isNotEmpty ? ' - ${relDesc.trim()}' : '';
-        sb.writeln('- $otherName: $relType (${strength.toStringAsFixed(2)})$detail');
+        final relDesc = (rel['description'] as String?)?.trim();
+        final detail = relDesc != null && relDesc.isNotEmpty ? ' - $relDesc' : '';
+        sb.writeln('  - $otherName: $relType (${strength.toStringAsFixed(2)})$detail');
       }
     }
-    sb.writeln('');
 
-    if (decisionEvents.isNotEmpty || best['decisionReasoning'] != null) {
-      sb.writeln('Decision context');
-      if ((best['decisionReasoning'] as String?)?.trim().isNotEmpty ?? false) {
-        sb.writeln('- Reasoning: ${best['decisionReasoning']}');
+    if (hasDecisionReasoning || hasDecisionExpected || hasDecisionActual || hasDecisionReview) {
+      sb.writeln('- Decision context');
+      if (hasDecisionReasoning) {
+        sb.writeln('  - Reasoning: ${best['decisionReasoning']}');
       }
-      if ((best['decisionExpectedOutcome'] as String?)?.trim().isNotEmpty ?? false) {
-        sb.writeln('- Expected outcome: ${best['decisionExpectedOutcome']}');
+      if (hasDecisionExpected) {
+        sb.writeln('  - Expected outcome: ${best['decisionExpectedOutcome']}');
       }
-      if ((best['decisionActualOutcome'] as String?)?.trim().isNotEmpty ?? false) {
-        sb.writeln('- Actual outcome: ${best['decisionActualOutcome']}');
+      if (hasDecisionActual) {
+        sb.writeln('  - Actual outcome: ${best['decisionActualOutcome']}');
       }
-      if ((best['decisionReviewDate'] as String?)?.isNotEmpty ?? false) {
-        sb.writeln('- Review date: ${best['decisionReviewDate']}');
+      final decisionReview = _safeDateLabel(best['decisionReviewDate'] as String?);
+      if (decisionReview != 'Unknown date') {
+        sb.writeln('  - Review date: $decisionReview');
       }
-      if (decisionEvents.isNotEmpty) {
-        for (final item in decisionEvents.take(3)) {
-          final title = item['title'] as String? ?? 'Decision';
-          final note = item['note'] as String? ?? '';
-          final confidence = item['confidence'];
-          sb.writeln('- Event: $title');
-          if (note.isNotEmpty) {
-            sb.writeln('  Note: $note');
-          }
-          if (confidence != null) {
-            sb.writeln('  Confidence: $confidence/10');
-          }
-        }
-      }
-      sb.writeln('');
     }
 
     if (recentEvents.isNotEmpty) {
-      sb.writeln('Recent activity');
-      for (final item in recentEvents.take(5)) {
-        final ts = DateTime.tryParse(item['timestamp'] as String? ?? '');
-        final dateStr = ts == null ? '' : '${ts.day}/${ts.month}/${ts.year}';
+      sb.writeln('- Recent activity');
+      for (final item in recentEvents.take(4)) {
+        final ts = _safeDateLabel(item['timestamp'] as String?);
         final note = item['note'] as String? ?? '';
         final preview = note.length > 100 ? '${note.substring(0, 100)}...' : note;
-        sb.writeln('- [$dateStr] $preview');
+        sb.writeln('  - [$ts] $preview');
       }
-      sb.writeln('');
     }
 
     if (patterns.isNotEmpty) {
-      sb.writeln('Related patterns');
+      sb.writeln('- Related patterns');
       for (final p in patterns.take(4)) {
         final title = p['title'] as String? ?? 'Pattern';
         final confidence = (p['confidence'] as num?)?.toDouble() ?? 0.0;
         final occurrences = p['occurrences'] ?? 0;
-        sb.writeln('- $title (${(confidence * 100).toStringAsFixed(0)}% confidence, $occurrences occurrences)');
+        sb.writeln('  - $title (${(confidence * 100).toStringAsFixed(0)}% confidence, $occurrences occurrences)');
       }
-      sb.writeln('');
     }
 
-    if (stats.isNotEmpty) {
-      sb.writeln('Knowledge base coverage');
-      sb.writeln('- Supporting events: ${stats['totalRelevantEvents'] ?? 0}');
-      sb.writeln('- Related entities: ${stats['totalRelevantEntities'] ?? 0}');
-    }
+    sb.writeln('');
+  }
 
-    return sb.toString().trim();
+  bool _hasText(Object? value) {
+    return value is String && value.trim().isNotEmpty;
   }
 
   String _buildNoMatchResponse(
