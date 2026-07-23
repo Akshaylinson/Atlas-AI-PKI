@@ -1,35 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:graphview/GraphView.dart';
-import 'dart:convert';
 import '../../core/providers/providers.dart';
 import '../../core/database/app_database.dart';
-import '../../shared/theme/app_theme.dart';
 import '../entities/entity_detail_screen.dart';
 
-class KnowledgeGraphScreen extends ConsumerStatefulWidget {
+class KnowledgeGraphScreen extends ConsumerWidget {
   const KnowledgeGraphScreen({super.key});
 
   @override
-  ConsumerState<KnowledgeGraphScreen> createState() =>
-      _KnowledgeGraphScreenState();
-}
-
-class _KnowledgeGraphScreenState
-    extends ConsumerState<KnowledgeGraphScreen> {
-  final Graph _graph = Graph()..isTree = false;
-  final BuchheimWalkerConfiguration _config = BuchheimWalkerConfiguration()
-    ..siblingSeparation = 60
-    ..levelSeparation = 80
-    ..subtreeSeparation = 60
-    ..orientation = BuchheimWalkerConfiguration.ORIENTATION_TOP_BOTTOM;
-
-  final Map<String, Node> _nodeMap = {};
-  bool _built = false;
-  bool _preparingGraph = false;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final entitiesAsync = ref.watch(entitiesStreamProvider);
     final relsAsync = ref.watch(allRelationshipsProvider);
 
@@ -39,7 +18,10 @@ class _KnowledgeGraphScreenState
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => setState(() => _built = false),
+            onPressed: () {
+              ref.invalidate(entitiesStreamProvider);
+              ref.invalidate(allRelationshipsProvider);
+            },
           ),
         ],
       ),
@@ -56,75 +38,84 @@ class _KnowledgeGraphScreenState
               );
             }
 
-            if (!_built && !_preparingGraph) {
-              _preparingGraph = true;
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (!mounted) return;
-                setState(() {
-                  _buildGraph(entities, rels);
-                  _built = true;
-                  _preparingGraph = false;
-                });
-              });
-            }
+            final byId = {for (final e in entities) e.id: e};
+            final decisionCount = entities.where((e) => e.isDecision).length;
 
-            if (!_built) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            return Column(
+            return ListView(
+              padding: const EdgeInsets.all(16),
               children: [
-                // Legend
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.circle, size: 10, color: Colors.blue),
-                      const SizedBox(width: 4),
-                      const Text('Entity', style: TextStyle(fontSize: 11)),
-                      const SizedBox(width: 16),
-                      const Icon(Icons.circle, size: 10, color: Colors.amber),
-                      const SizedBox(width: 4),
-                      const Text('Decision', style: TextStyle(fontSize: 11)),
-                    ],
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _SummaryCard(
+                        label: 'Entities',
+                        value: entities.length.toString(),
+                        icon: Icons.category_outlined,
+                        color: Colors.blue,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _SummaryCard(
+                        label: 'Decisions',
+                        value: decisionCount.toString(),
+                        icon: Icons.lightbulb_outline,
+                        color: Colors.amber,
+                      ),
+                    ),
+                  ],
                 ),
-                Expanded(
-                  child: InteractiveViewer(
-                    constrained: false,
-                    boundaryMargin: const EdgeInsets.all(100),
-                    minScale: 0.3,
-                    maxScale: 2.5,
-                    child: GraphView(
-                      graph: _graph,
-                      algorithm: BuchheimWalkerAlgorithm(
-                          _config, TreeEdgeRenderer(_config)),
-                      paint: Paint()
-                        ..color = Theme.of(context)
-                            .colorScheme
-                            .outlineVariant
-                        ..strokeWidth = 1.5
-                        ..style = PaintingStyle.stroke,
-                      builder: (node) {
-                        final entityId = node.key!.value as String;
-                        final entity = entities
-                            .where((e) => e.id == entityId)
-                            .firstOrNull;
-                        return _GraphNode(
-                          entity: entity,
-                          onTap: () => Navigator.push(
+                const SizedBox(height: 20),
+                const Text(
+                  'Entities',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: entities
+                      .map(
+                        (e) => ActionChip(
+                          avatar: Icon(
+                            e.isDecision ? Icons.lightbulb : Icons.circle,
+                            size: 16,
+                            color: e.isDecision ? Colors.amber : Colors.blue,
+                          ),
+                          label: Text(e.name),
+                          onPressed: () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) =>
-                                  EntityDetailScreen(entityId: entityId),
+                              builder: (_) => EntityDetailScreen(entityId: e.id),
                             ),
                           ),
-                        );
-                      },
-                    ),
-                  ),
+                        ),
+                      )
+                      .toList(),
                 ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Relationships',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                if (rels.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Text('No relationships recorded yet.'),
+                  )
+                else
+                  ...rels.map((rel) => _RelationshipCard(
+                        rel: rel,
+                        from: byId[rel.fromEntityId],
+                        to: byId[rel.toEntityId],
+                        onEntityTap: (id) => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => EntityDetailScreen(entityId: id),
+                          ),
+                        ),
+                      )),
               ],
             );
           },
@@ -132,70 +123,154 @@ class _KnowledgeGraphScreenState
       ),
     );
   }
-
-  void _buildGraph(List<Entity> entities, List<Relationship> rels) {
-    _graph.nodes.clear();
-    _graph.edges.clear();
-    _nodeMap.clear();
-
-    for (final entity in entities) {
-      final node = Node.Id(entity.id);
-      _nodeMap[entity.id] = node;
-      _graph.addNode(node);
-    }
-
-    for (final rel in rels) {
-      final from = _nodeMap[rel.fromEntityId];
-      final to = _nodeMap[rel.toEntityId];
-      if (from != null && to != null) {
-        _graph.addEdge(from, to,
-            paint: Paint()
-              ..color = Colors.grey.withOpacity(rel.strength)
-              ..strokeWidth = rel.strength * 2
-              ..style = PaintingStyle.stroke);
-      }
-    }
-  }
 }
 
-class _GraphNode extends StatelessWidget {
-  final Entity? entity;
-  final VoidCallback onTap;
+class _SummaryCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
 
-  const _GraphNode({required this.entity, required this.onTap});
+  const _SummaryCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final color = entity?.isDecision == true
-        ? Colors.amber
-        : entity?.color != null
-            ? Color(int.tryParse(entity!.color!) ?? scheme.primary.value)
-            : scheme.primary;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          Text(label, style: const TextStyle(fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color, width: 1.5),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (entity?.icon != null)
-              Text(entity!.icon!, style: const TextStyle(fontSize: 14)),
-            if (entity?.icon != null) const SizedBox(width: 4),
+class _RelationshipCard extends StatelessWidget {
+  final Relationship rel;
+  final Entity? from;
+  final Entity? to;
+  final ValueChanged<String> onEntityTap;
+
+  const _RelationshipCard({
+    required this.rel,
+    required this.from,
+    required this.to,
+    required this.onEntityTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final fromName = from?.name ?? rel.fromEntityId;
+    final toName = to?.name ?? rel.toEntityId;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => onEntityTap(rel.fromEntityId),
+                  child: _EntityPill(
+                    label: fromName,
+                    color: from?.isDecision == true ? Colors.amber : Colors.blue,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.arrow_forward, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => onEntityTap(rel.toEntityId),
+                  child: _EntityPill(
+                    label: toName,
+                    color: to?.isDecision == true ? Colors.amber : Colors.blue,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            rel.relationshipType,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          if (rel.description != null && rel.description!.isNotEmpty) ...[
+            const SizedBox(height: 4),
             Text(
-              entity?.name ?? '?',
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: color),
+              rel.description!,
+              style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.7)),
             ),
           ],
+          const SizedBox(height: 4),
+          Text(
+            'Strength: ${(rel.strength * 100).toStringAsFixed(0)}%',
+            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EntityPill extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _EntityPill({
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          color: color,
+          fontSize: 12,
         ),
       ),
     );

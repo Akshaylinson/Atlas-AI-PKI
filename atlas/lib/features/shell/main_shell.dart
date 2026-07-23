@@ -10,26 +10,51 @@ import '../decisions/decisions_screen.dart';
 
 final _navIndexProvider = StateProvider<int>((ref) => 0);
 
-class MainShell extends ConsumerWidget {
+class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key});
 
-  static const _screens = [
-    AnalyticsScreen(),
-    EntitiesScreen(),
-    EventsScreen(),
-    AIChatScreen(),
-    DecisionsScreen(),
-  ];
+  @override
+  ConsumerState<MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends ConsumerState<MainShell> {
+  final List<Widget?> _loadedScreens = List<Widget?>.filled(5, null);
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  void initState() {
+    super.initState();
+    _loadedScreens[0] = const AnalyticsScreen();
+  }
+
+  Widget _screenFor(int index) {
+    return _loadedScreens[index] ??= switch (index) {
+      0 => const AnalyticsScreen(),
+      1 => const EntitiesScreen(),
+      2 => const EventsScreen(),
+      3 => const AIChatScreen(),
+      _ => const DecisionsScreen(),
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final index = ref.watch(_navIndexProvider);
     return Scaffold(
-      body: _screens[index],
+      body: IndexedStack(
+        index: index,
+        children: List.generate(
+          5,
+          (i) => _loadedScreens[i] ?? const SizedBox.shrink(),
+        ),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
-        onDestinationSelected: (i) =>
-            ref.read(_navIndexProvider.notifier).state = i,
+        onDestinationSelected: (i) {
+          setState(() {
+            ref.read(_navIndexProvider.notifier).state = i;
+            _loadedScreens[i] = _screenFor(i);
+          });
+        },
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.dashboard_outlined),
