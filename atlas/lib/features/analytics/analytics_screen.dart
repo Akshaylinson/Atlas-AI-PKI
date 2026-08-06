@@ -11,6 +11,7 @@ import '../../core/services/model_loader.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/utils.dart';
+import '../camera/camera_screen.dart';
 import '../knowledge_graph/knowledge_graph_screen.dart';
 import '../package/package_setup_screen.dart';
 import '../patterns/patterns_screen.dart';
@@ -28,6 +29,11 @@ class AnalyticsScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Atlas', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.camera_alt_outlined),
+            tooltip: 'Capture',
+            onPressed: () => openCameraCapture(context),
+          ),
           IconButton(
             icon: const Icon(Icons.account_tree_outlined),
             tooltip: 'Knowledge Graph',
