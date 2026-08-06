@@ -60,8 +60,8 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
         actions: [
           _ModelStatusChip(),
           IconButton(
-            icon: const Icon(Icons.delete_sweep_outlined),
-            tooltip: 'Clear chat',
+            icon: const Icon(Icons.add),
+            tooltip: 'New Chat',
             onPressed: () => ref.read(aiChatProvider.notifier).clear(),
           ),
           IconButton(
@@ -131,21 +131,16 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
                         textInputAction: TextInputAction.send,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: _sending ? null : _send,
-                      style: FilledButton.styleFrom(
-                        shape: const CircleBorder(),
-                        padding: const EdgeInsets.all(14),
-                      ),
-                      child: _sending
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.send),
-                    ),
+                    const SizedBox(width: 4),
+                    _sending
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : IconButton(
+                            icon: const Icon(Icons.send),
+                            onPressed: _send,
+                          ),
                   ],
                 ),
               ),

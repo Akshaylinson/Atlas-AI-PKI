@@ -7,6 +7,7 @@ import '../events/events_screen.dart';
 import '../events/event_form_screen.dart';
 import '../ai_chat/ai_chat_screen.dart';
 import '../decisions/decisions_screen.dart';
+import '../../core/providers/providers.dart';
 
 final _navIndexProvider = StateProvider<int>((ref) => 0);
 
@@ -107,6 +108,9 @@ class _MainShellState extends ConsumerState<MainShell> {
         icon: const Icon(Icons.add),
         label: const Text('New Event'),
       );
+    }
+    if (index == 3) {
+      return null;
     }
     return null;
   }

@@ -226,7 +226,10 @@ class AIChatNotifier extends StateNotifier<List<ChatMessage>> {
     }
   }
 
-  void clear() => state = [];
+  void clear() {
+    _gemma.clearSession();
+    state = [];
+  }
 }
 
 final aiChatProvider = StateNotifierProvider<AIChatNotifier, List<ChatMessage>>((ref) {

@@ -141,6 +141,14 @@ class EvidencePackage {
     required this.similarEventIds,
     required this.query,
   });
+
+  const EvidencePackage.empty()
+      : eventIds = const [],
+        entityIds = const [],
+        patternIds = const [],
+        statistics = const {},
+        similarEventIds = const [],
+        query = '';
 }
 
 // ── Decision Review ───────────────────────────────────────────────────────────
