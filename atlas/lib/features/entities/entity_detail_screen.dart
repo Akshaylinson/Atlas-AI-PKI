@@ -12,6 +12,7 @@ import '../../core/services/decision_intelligence.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/utils.dart';
+import '../camera/image_analysis_screen.dart';
 import 'entity_form_screen.dart';
 import '../events/event_form_screen.dart';
 import '../events/event_detail_screen.dart';
@@ -818,15 +819,7 @@ class _GalleryCell extends StatelessWidget {
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => Scaffold(
-              backgroundColor: Colors.black,
-              appBar: AppBar(
-                backgroundColor: Colors.black,
-                iconTheme: const IconThemeData(color: Colors.white),
-              ),
-              body: PhotoView(
-                  imageProvider: FileImage(File(att.path))),
-            ),
+            builder: (_) => ImageAnalysisScreen(imagePath: att.path),
           ),
         ),
         child: Image.file(File(att.path),
