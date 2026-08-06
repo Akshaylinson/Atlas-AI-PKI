@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:convert';
 import 'package:open_filex/open_filex.dart';
-import 'package:photo_view/photo_view.dart';
 import '../../core/providers/providers.dart';
 import '../../core/database/app_database.dart';
 import '../../core/models/models.dart';
@@ -38,11 +37,18 @@ class EntityDetailScreen extends ConsumerWidget {
           return const Scaffold(
               body: Center(child: Text('Entity not found')));
         }
-        final color = entity.color != null
-            ? Color(int.tryParse(entity.color!) ??
-                Theme.of(context).colorScheme.primary.toARGB32())
-            : Theme.of(context).colorScheme.primary;
-        final tags = List<String>.from(jsonDecode(entity.tags));
+        final scheme = Theme.of(context).colorScheme;
+        Color parseColor(String? s) {
+          if (s == null) return scheme.primary;
+          final v = int.tryParse(s) ??
+              int.tryParse(s.replaceFirst('0x', ''), radix: 16) ??
+              int.tryParse(s.replaceFirst('#', ''), radix: 16);
+          return v != null ? Color(v) : scheme.primary;
+        }
+        final color = parseColor(entity.color);
+        final tags = parseStringListJson(entity.tags);
+        final hasProfileImage = entity.profileImagePath != null &&
+            File(entity.profileImagePath!).existsSync();
 
         return Scaffold(
           appBar: AppBar(
@@ -91,7 +97,7 @@ class EntityDetailScreen extends ConsumerWidget {
                               decoration: BoxDecoration(
                                 color: color.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(16),
-                                image: entity.profileImagePath != null
+                                image: hasProfileImage
                                     ? DecorationImage(
                                         image: FileImage(
                                             File(entity.profileImagePath!)),
@@ -99,10 +105,10 @@ class EntityDetailScreen extends ConsumerWidget {
                                       )
                                     : null,
                               ),
-                              child: entity.profileImagePath == null
+                              child: !hasProfileImage
                                   ? Center(
                                       child: Text(
-                                        entity.icon ?? entity.name[0].toUpperCase(),
+                                        entity.icon ?? (entity.name.isNotEmpty ? entity.name[0].toUpperCase() : '?'),
                                         style: TextStyle(
                                           fontSize: entity.icon != null ? 28 : 22,
                                           fontWeight: FontWeight.bold,

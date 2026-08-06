@@ -1,7 +1,8 @@
+import 'dart:convert';
 import 'package:intl/intl.dart';
 
 String formatDate(DateTime dt) => DateFormat('MMM d, yyyy').format(dt);
-String formatDateTime(DateTime dt) => DateFormat('MMM d, yyyy â€¢ h:mm a').format(dt);
+String formatDateTime(DateTime dt) => DateFormat('MMM d, yyyy • h:mm a').format(dt);
 String formatRelative(DateTime dt) {
   final diff = DateTime.now().difference(dt);
   if (diff.inMinutes < 1) return 'Just now';
@@ -13,6 +14,35 @@ String formatRelative(DateTime dt) {
 
 String truncate(String text, int maxLength) =>
     text.length > maxLength ? '${text.substring(0, maxLength)}...' : text;
+
+List<String> parseStringListJson(String? value) {
+  if (value == null || value.trim().isEmpty) return const [];
+  try {
+    final decoded = jsonDecode(value);
+    if (decoded is List) {
+      return decoded.map((item) => item.toString()).toList();
+    }
+  } catch (_) {
+    // Fall through to empty list.
+  }
+  return const [];
+}
+
+Map<String, dynamic> parseStringMapJson(String? value) {
+  if (value == null || value.trim().isEmpty) return const {};
+  try {
+    final decoded = jsonDecode(value);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    if (decoded is Map) {
+      return decoded.map((key, value) => MapEntry(key.toString(), value));
+    }
+  } catch (_) {
+    // Fall through to empty map.
+  }
+  return const {};
+}
 
 String confidenceLabel(double confidence) {
   if (confidence >= 0.8) return 'Very High';

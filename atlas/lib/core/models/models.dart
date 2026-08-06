@@ -36,10 +36,19 @@ class Attachment {
       };
 
   static List<Attachment> listFromJson(String json) {
-    final list = jsonDecode(json) as List;
-    return list.map((e) => Attachment.fromJson(e)).toList();
+    try {
+      final decoded = jsonDecode(json);
+      if (decoded is List) {
+        return decoded
+            .whereType<Map>()
+            .map((e) => Attachment.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      }
+    } catch (_) {
+      // Fall through to an empty list.
+    }
+    return const [];
   }
-
   static String listToJson(List<Attachment> attachments) =>
       jsonEncode(attachments.map((a) => a.toJson()).toList());
 }
@@ -172,3 +181,4 @@ class DecisionReview {
     required this.isOverdue,
   });
 }
+

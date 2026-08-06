@@ -65,11 +65,9 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
         }
 
         final attachments = Attachment.listFromJson(event.attachments);
-        final tags = List<String>.from(jsonDecode(event.tags));
-        final linkedIds =
-            List<String>.from(jsonDecode(event.linkedEntityIds));
-        final customFields =
-            Map<String, dynamic>.from(jsonDecode(event.customFields));
+        final tags = parseStringListJson(event.tags);
+        final linkedIds = parseStringListJson(event.linkedEntityIds);
+        final customFields = parseStringMapJson(event.customFields);
         final scheme = Theme.of(context).colorScheme;
 
         return Scaffold(
@@ -93,11 +91,10 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Header row
               Row(
                 children: [
-                  if (event.mood != null)
-                    Text(moodEmojis[event.mood] ?? '😐',
+                  if (event.mood != null && event.mood!.isNotEmpty)
+                    Text(moodEmojis[event.mood] ?? '??',
                         style: const TextStyle(fontSize: 28)),
                   const SizedBox(width: 8),
                   Expanded(
@@ -107,9 +104,8 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
                         Text(formatDateTime(event.timestamp),
                             style: TextStyle(
                                 fontSize: 13,
-                                color:
-                                    scheme.onSurface.withOpacity(0.6))),
-                        if (event.mood != null)
+                                color: scheme.onSurface.withValues(alpha: 0.6))),
+                        if (event.mood != null && event.mood!.isNotEmpty)
                           Text(
                               event.mood![0].toUpperCase() +
                                   event.mood!.substring(1),
@@ -132,7 +128,7 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: Colors.amber.withOpacity(0.15),
+                        color: Colors.amber.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Text('Decision',
@@ -157,7 +153,7 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: scheme.surfaceContainerHighest.withOpacity(0.5),
+                  color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(event.note,
@@ -278,8 +274,8 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
                 if (event.decisionOptions != null)
                   _DecisionField(
                     label: 'Options Considered',
-                    value: (jsonDecode(event.decisionOptions!) as List)
-                        .join('\n• '),
+                    value: parseStringListJson(event.decisionOptions!)
+                        .join(', '),
                   ),
                 if (event.decisionReasoning != null)
                   _DecisionField(
@@ -354,7 +350,7 @@ class _LinkedEntityChip extends ConsumerWidget {
       data: (entity) => entity == null
           ? const SizedBox.shrink()
           : Chip(
-              avatar: Text(entity.icon ?? entity.name[0],
+              avatar: Text(entity.icon ?? (entity.name.isNotEmpty ? entity.name[0] : '?'),
                   style: const TextStyle(fontSize: 14)),
               label: Text(entity.name),
             ),

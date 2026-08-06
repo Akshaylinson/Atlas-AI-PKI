@@ -36,7 +36,52 @@ class AppDatabase extends _$AppDatabase {
             'ALTER TABLE entities ADD COLUMN profile_image_path TEXT;');
       }
     },
+    beforeOpen: (details) async {
+      await _repairLegacyNullRows();
+    },
   );
+
+  Future<void> _repairLegacyNullRows() async {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+    await customStatement("""
+      UPDATE entities
+      SET tags = COALESCE(tags, '[]'),
+          custom_fields = COALESCE(custom_fields, '{}'),
+          status = COALESCE(status, 'active'),
+          is_decision = COALESCE(is_decision, 0),
+          created_at = COALESCE(created_at, $nowMs),
+          updated_at = COALESCE(updated_at, $nowMs)
+      WHERE tags IS NULL
+         OR custom_fields IS NULL
+         OR status IS NULL
+         OR is_decision IS NULL
+         OR created_at IS NULL
+         OR updated_at IS NULL;
+    """);
+
+    await customStatement("""
+      UPDATE events
+      SET note = COALESCE(note, ''),
+          linked_entity_ids = COALESCE(linked_entity_ids, '[]'),
+          attachments = COALESCE(attachments, '[]'),
+          importance = COALESCE(importance, 3),
+          custom_fields = COALESCE(custom_fields, '{}'),
+          tags = COALESCE(tags, '[]'),
+          is_decision = COALESCE(is_decision, 0),
+          timestamp = COALESCE(timestamp, $nowMs),
+          created_at = COALESCE(created_at, $nowMs)
+      WHERE note IS NULL
+         OR linked_entity_ids IS NULL
+         OR attachments IS NULL
+         OR importance IS NULL
+         OR custom_fields IS NULL
+         OR tags IS NULL
+         OR is_decision IS NULL
+         OR timestamp IS NULL
+         OR created_at IS NULL;
+    """);
+  }
 
   // ── Entities ──────────────────────────────────────────────────────────────
 

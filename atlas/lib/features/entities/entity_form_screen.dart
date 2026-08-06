@@ -8,6 +8,7 @@ import 'dart:convert';
 import '../../core/database/app_database.dart';
 import '../../core/providers/providers.dart';
 import '../../shared/widgets/widgets.dart';
+import '../../shared/utils/utils.dart';
 import 'package:drift/drift.dart' show Value;
 
 class EntityFormScreen extends ConsumerStatefulWidget {
@@ -49,7 +50,7 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
     if (e != null) {
       _nameCtrl.text = e.name;
       _descCtrl.text = e.description ?? '';
-      _tags = List<String>.from(jsonDecode(e.tags));
+      _tags = parseStringListJson(e.tags);
       if (e.color != null) {
         _color = Color(int.tryParse(e.color!) ?? const Color(0xFF6750A4).toARGB32());
       }
@@ -58,14 +59,13 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
       _status = e.status;
       _isDecision = e.isDecision;
       if (e.decisionOptions != null) {
-        _optionsCtrl.text =
-            (jsonDecode(e.decisionOptions!) as List).join('\n');
+        _optionsCtrl.text = parseStringListJson(e.decisionOptions!).join('\n');
       }
       _reasoningCtrl.text = e.decisionReasoning ?? '';
       _expectedOutcomeCtrl.text = e.decisionExpectedOutcome ?? '';
       _decisionConfidence = e.decisionConfidence ?? 5;
       _reviewDate = e.decisionReviewDate;
-      final fields = jsonDecode(e.customFields) as Map<String, dynamic>;
+      final fields = parseStringMapJson(e.customFields);
       _customFields = fields.entries
           .map((e) => {'key': e.key, 'value': e.value.toString(), 'type': 'text'})
           .toList();
@@ -176,7 +176,8 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
                     CircleAvatar(
                       radius: 48,
                       backgroundColor: _color.withOpacity(0.2),
-                      backgroundImage: _profileImagePath != null
+                      backgroundImage: _profileImagePath != null &&
+                          File(_profileImagePath!).existsSync()
                           ? FileImage(File(_profileImagePath!))
                           : null,
                       child: _profileImagePath == null

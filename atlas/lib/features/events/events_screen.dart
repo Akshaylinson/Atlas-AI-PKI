@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'dart:convert';
 import '../../core/providers/providers.dart';
 import '../../core/database/app_database.dart';
+import '../../core/models/models.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/utils.dart';
@@ -168,8 +168,8 @@ class _EventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final attachments = List.from(jsonDecode(event.attachments));
-    final tags = List<String>.from(jsonDecode(event.tags));
+    final attachments = Attachment.listFromJson(event.attachments);
+    final tags = parseStringListJson(event.tags);
 
     return InkWell(
       borderRadius: BorderRadius.circular(16),
@@ -180,12 +180,12 @@ class _EventCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest.withOpacity(0.5),
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: event.isDecision
-                ? Colors.amber.withOpacity(0.4)
-                : scheme.outlineVariant.withOpacity(0.3),
+                ? Colors.amber.withValues(alpha: 0.4)
+                : scheme.outlineVariant.withValues(alpha: 0.3),
           ),
         ),
         child: Column(
@@ -202,7 +202,7 @@ class _EventCard extends StatelessWidget {
                     formatRelative(event.timestamp),
                     style: TextStyle(
                         fontSize: 11,
-                        color: scheme.onSurface.withOpacity(0.5)),
+                        color: scheme.onSurface.withValues(alpha: 0.5)),
                   ),
                 ),
                 Row(
@@ -217,7 +217,7 @@ class _EventCard extends StatelessWidget {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: Colors.amber.withOpacity(0.15),
+                      color: Colors.amber.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: const Text('Decision',
@@ -230,7 +230,7 @@ class _EventCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            if (event.title != null) ...[
+            if (event.title != null && event.title!.isNotEmpty) ...[
               Text(
                 event.title!,
                 style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
@@ -275,3 +275,6 @@ class _EventCard extends StatelessWidget {
     );
   }
 }
+
+
+

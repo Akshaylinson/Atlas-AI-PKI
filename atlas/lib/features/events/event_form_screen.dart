@@ -14,6 +14,7 @@ import '../../core/database/app_database.dart';
 import '../../core/models/models.dart';
 import '../../core/providers/providers.dart';
 import '../../shared/widgets/widgets.dart';
+import '../../shared/utils/utils.dart';
 import '../../shared/theme/app_theme.dart';
 
 class EventFormScreen extends ConsumerStatefulWidget {
@@ -67,21 +68,20 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
       _selectedMood = e.mood;
       _importance = e.importance;
       _durationMinutes = e.durationMinutes;
-      _tags = List<String>.from(jsonDecode(e.tags));
+      _tags = parseStringListJson(e.tags);
       _attachments = Attachment.listFromJson(e.attachments);
       _voiceNotePath = e.voiceNotePath;
-      _linkedEntityIds = List<String>.from(jsonDecode(e.linkedEntityIds));
+      _linkedEntityIds = parseStringListJson(e.linkedEntityIds);
       _timestamp = e.timestamp;
       _isDecision = e.isDecision;
       if (e.decisionOptions != null) {
-        _decisionOptionsCtrl.text =
-            (jsonDecode(e.decisionOptions!) as List).join('\n');
+        _decisionOptionsCtrl.text = parseStringListJson(e.decisionOptions!).join('\n');
       }
       _decisionReasoningCtrl.text = e.decisionReasoning ?? '';
       _decisionExpectedCtrl.text = e.decisionExpectedOutcome ?? '';
       _decisionConfidence = e.decisionConfidence ?? 5;
       _reviewDate = e.decisionReviewDate;
-      final fields = jsonDecode(e.customFields) as Map<String, dynamic>;
+      final fields = parseStringMapJson(e.customFields);
       _customFields = fields.entries
           .map((e) => {'key': e.key, 'value': e.value.toString(), 'type': 'text'})
           .toList();

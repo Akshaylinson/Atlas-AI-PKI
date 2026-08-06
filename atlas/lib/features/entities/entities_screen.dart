@@ -9,6 +9,15 @@ import '../../shared/utils/utils.dart';
 import 'entity_form_screen.dart';
 import 'entity_detail_screen.dart';
 
+// Handles decimal (toARGB32), 0x-hex, and #-hex color strings
+Color _parseEntityColor(String? s, Color fallback) {
+  if (s == null) return fallback;
+  final v = int.tryParse(s) ??
+      int.tryParse(s.replaceFirst('0x', ''), radix: 16) ??
+      int.tryParse(s.replaceFirst('#', ''), radix: 16);
+  return v != null ? Color(v) : fallback;
+}
+
 final _entitySearchQueryProvider = StateProvider<String>((ref) => '');
 
 class EntitiesScreen extends ConsumerWidget {
@@ -78,10 +87,11 @@ class _EntityCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final tags = List<String>.from(jsonDecode(entity.tags));
-    final color = entity.color != null
-        ? Color(int.tryParse(entity.color!) ?? scheme.primary.value)
-        : scheme.primary;
+    final tags = parseStringListJson(entity.tags);
+    final color = _parseEntityColor(entity.color, scheme.primary);
+    final initial = entity.name.isNotEmpty ? entity.name[0].toUpperCase() : '?';
+    final hasProfileImage = entity.profileImagePath != null &&
+        File(entity.profileImagePath!).existsSync();
 
     return InkWell(
       borderRadius: BorderRadius.circular(16),
@@ -92,9 +102,9 @@ class _EntityCard extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest.withOpacity(0.5),
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.3)),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
         ),
         child: Row(
           children: [
@@ -102,19 +112,19 @@ class _EntityCard extends ConsumerWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.15),
+                color: color.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(12),
-                image: entity.profileImagePath != null
+                image: hasProfileImage
                     ? DecorationImage(
                         image: FileImage(File(entity.profileImagePath!)),
                         fit: BoxFit.cover,
                       )
                     : null,
               ),
-              child: entity.profileImagePath == null
+              child: !hasProfileImage
                   ? Center(
                       child: Text(
-                        entity.icon ?? entity.name[0].toUpperCase(),
+                        entity.icon ?? initial,
                         style: TextStyle(
                           fontSize: entity.icon != null ? 22 : 18,
                           fontWeight: FontWeight.bold,
@@ -141,7 +151,7 @@ class _EntityCard extends ConsumerWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: Colors.amber.withOpacity(0.2),
+                            color: Colors.amber.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: const Text('Decision',
@@ -159,7 +169,7 @@ class _EntityCard extends ConsumerWidget {
                         truncate(entity.description!, 60),
                         style: TextStyle(
                             fontSize: 12,
-                            color: scheme.onSurface.withOpacity(0.6)),
+                            color: scheme.onSurface.withValues(alpha: 0.6)),
                       ),
                     ),
                   if (tags.isNotEmpty)
