@@ -7,11 +7,11 @@ import 'package:open_filex/open_filex.dart';
 import '../../core/providers/providers.dart';
 import '../../core/database/app_database.dart';
 import '../../core/models/models.dart';
-import '../../core/services/decision_intelligence.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/utils.dart';
 import '../camera/image_analysis_screen.dart';
+import '../decisions/matrix_screen.dart';
 import 'entity_form_screen.dart';
 import '../events/event_form_screen.dart';
 import '../events/event_detail_screen.dart';
@@ -193,7 +193,7 @@ class EntityDetailScreen extends ConsumerWidget {
                   _TimelineTab(eventsAsync: eventsAsync),
                   _StatsTab(statsAsync: statsAsync),
                   _GraphTab(entityId: entityId, relsAsync: relsAsync),
-                  _DecisionTab(entity: entity),
+                  _EvaluateTab(entity: entity),
                   _GalleryTab(eventsAsync: eventsAsync),
                 ],
               ),
@@ -248,7 +248,7 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
           Tab(text: 'Timeline'),
           Tab(text: 'Stats'),
           Tab(text: 'Graph'),
-          Tab(text: 'Decision'),
+          Tab(text: 'Evaluate'),
           Tab(text: 'Gallery'),
         ],
       ),
@@ -986,128 +986,181 @@ class _BadgeChip extends StatelessWidget {
   }
 }
 
-class _DecisionTab extends ConsumerWidget {
+class _EvaluateTab extends ConsumerWidget {
   final Entity entity;
-
-  const _DecisionTab({required this.entity});
+  const _EvaluateTab({required this.entity});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (!entity.isDecision) {
-      return EmptyState(
-        icon: Icons.lightbulb_outline,
-        title: 'Not a Decision',
-        subtitle:
-            'Edit this entity and check "Mark as Decision" to track it',
-        action: TextButton(
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (_) => EntityFormScreen(entity: entity)),
+    final matricesAsync = ref.watch(matricesForEntityProvider(entity.id));
+    return matricesAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (matrices) => Stack(
+        children: [
+          matrices.isEmpty
+              ? EmptyState(
+                  icon: Icons.balance_outlined,
+                  title: 'No evaluations yet',
+                  subtitle: 'Tap + to evaluate a decision about ${entity.name}',
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+                  itemCount: matrices.length,
+                  itemBuilder: (_, i) => _MatrixSummaryCard(matrix: matrices[i]),
+                ),
+          Positioned(
+            bottom: 16,
+            right: 16,
+            child: FloatingActionButton.extended(
+              heroTag: 'evaluate_fab',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MatrixScreen(entityId: entity.id),
+                ),
+              ),
+              icon: const Icon(Icons.add),
+              label: const Text('New Evaluation'),
+            ),
           ),
-          child: const Text('Edit Entity'),
-        ),
-      );
-    }
+        ],
+      ),
+    );
+  }
+}
 
-    return FutureBuilder<DecisionEvidence>(
-      future: ref
-          .read(decisionIntelligenceProvider)
-          .analyzeEntity(entity.id),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snap.hasError) {
-          return Center(child: Text('Error: ${snap.error}'));
-        }
-        final evidence = snap.data!;
-        return ListView(
-          padding: const EdgeInsets.all(16),
+class _MatrixSummaryCard extends StatelessWidget {
+  final DecisionMatrix matrix;
+
+  const _MatrixSummaryCard({required this.matrix});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final parsedResult = _parseTopResult(matrix.result);
+    final confidence = matrix.confidenceScore ?? 0.0;
+    final label = confidence >= 0.7
+        ? 'High'
+        : confidence >= 0.4
+            ? 'Medium'
+            : 'Low';
+    final labelColor = confidence >= 0.7
+        ? Colors.green
+        : confidence >= 0.4
+            ? Colors.amber
+            : Colors.red;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MatrixScreen(entityId: matrix.entityId, existing: matrix),
+        ),
+      ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.25)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(matrix.question,
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            const SizedBox(height: 6),
+            Text(formatDate(matrix.createdAt),
+                style: TextStyle(
+                    fontSize: 11,
+                    color: scheme.onSurface.withValues(alpha: 0.55))),
+            const SizedBox(height: 10),
             Row(
               children: [
-                RiskBadge(riskLevel: evidence.riskLevel),
-                const Spacer(),
-                ConfidenceGauge(confidence: evidence.evidenceStrength),
+                Expanded(
+                  child: Text(
+                    parsedResult.name,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Text('${parsedResult.score.toStringAsFixed(2)} / 5.0'),
               ],
             ),
-            const SizedBox(height: 16),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.4,
-              children: [
-                StatCard(
-                    label: 'Supporting Events',
-                    value: evidence.totalEvents.toString(),
-                    icon: Icons.event_note,
-                    color: Colors.blue),
-                StatCard(
-                    label: 'Trend',
-                    value: evidence.trend,
-                    icon: Icons.trending_up,
-                    color: Colors.teal),
-                StatCard(
-                    label: 'Recent (30d)',
-                    value: evidence.recentActivity.toString(),
-                    icon: Icons.calendar_today,
-                    color: Colors.purple),
-                StatCard(
-                    label: 'Patterns',
-                    value: evidence.relatedPatternCount.toString(),
-                    icon: Icons.pattern,
-                    color: Colors.orange),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (entity.decisionReasoning != null) ...[
-              const Text('Reasoning',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 6),
-              Text(entity.decisionReasoning!),
-              const SizedBox(height: 12),
-            ],
-            if (entity.decisionExpectedOutcome != null) ...[
-              const Text('Expected Outcome',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 6),
-              Text(entity.decisionExpectedOutcome!),
-              const SizedBox(height: 12),
-            ],
-            if (entity.decisionActualOutcome != null) ...[
-              const Text('Actual Outcome',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 6),
-              Text(entity.decisionActualOutcome!),
-              const SizedBox(height: 12),
-            ],
-            if (entity.decisionReviewDate != null) ...[
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Icon(Icons.calendar_today, size: 14),
-                  const SizedBox(width: 6),
-                  Text(
-                      'Review by: ${formatDate(entity.decisionReviewDate!)}',
-                      style: const TextStyle(fontSize: 13)),
-                  const Spacer(),
-                  if (entity.decisionReviewDate!
-                      .isBefore(DateTime.now()))
-                    const Text('OVERDUE',
-                        style: TextStyle(
-                            color: Colors.red,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12)),
-                ],
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: (parsedResult.score / 5.0).clamp(0.0, 1.0),
+                minHeight: 8,
               ),
-            ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _ConfidenceChip(label: label, color: labelColor),
+              ],
+            ),
           ],
-        );
-      },
+        ),
+      ),
+    );
+  }
+
+  _ParsedResult _parseTopResult(String? raw) {
+    if (raw == null || raw.isEmpty) {
+      return const _ParsedResult(name: 'No result', score: 0.0);
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List && decoded.isNotEmpty) {
+        final first = decoded.first;
+        if (first is Map) {
+          final map = Map<String, dynamic>.from(first);
+          return _ParsedResult(
+            name: (map['name'] ?? 'Unknown').toString(),
+            score: (map['weightedScore'] as num?)?.toDouble() ?? 0.0,
+          );
+        }
+      }
+    } catch (_) {}
+    return const _ParsedResult(name: 'No result', score: 0.0);
+  }
+}
+
+class _ParsedResult {
+  final String name;
+  final double score;
+
+  const _ParsedResult({required this.name, required this.score});
+}
+
+class _ConfidenceChip extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _ConfidenceChip({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 }

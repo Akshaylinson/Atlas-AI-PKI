@@ -86,6 +86,22 @@ class Patterns extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+class DecisionMatrices extends Table {
+  TextColumn get id => text()();
+  TextColumn get entityId => text()();
+  TextColumn get question => text()();
+  // JSON: [{"name": "Cost", "weight": 0.4}, ...]
+  TextColumn get criteria => text().withDefault(const Constant('[]'))();
+  // JSON: [{"name": "Option A", "scores": {"Cost": 4, "Speed": 3}}, ...]
+  TextColumn get options => text().withDefault(const Constant('[]'))();
+  // JSON: [{"name": "Option A", "weightedScore": 3.7}, ...] sorted desc
+  TextColumn get result => text().nullable()();
+  RealColumn get confidenceScore => real().nullable()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
 class EntityStatistics extends Table {
   TextColumn get entityId => text()();
   IntColumn get totalEvents => integer().withDefault(const Constant(0))();
@@ -129,3 +145,4 @@ class AppSettings extends Table {
   @override
   Set<Column> get primaryKey => {key};
 }
+

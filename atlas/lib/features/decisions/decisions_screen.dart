@@ -4,8 +4,10 @@ import 'dart:convert';
 import '../../core/providers/providers.dart';
 import '../../core/database/app_database.dart';
 import '../../core/database/tables.dart';
+import '../../core/models/models.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/utils/utils.dart';
+import 'matrix_screen.dart';
 import '../entities/entity_detail_screen.dart';
 import '../events/event_detail_screen.dart';
 
@@ -16,6 +18,8 @@ class DecisionsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final decisionEntitiesAsync = ref.watch(decisionEntitiesProvider);
     final decisionEventsAsync = ref.watch(decisionEventsProvider);
+    final allMatricesAsync = ref.watch(allMatricesProvider);
+    final entitiesAsync = ref.watch(entitiesStreamProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -23,7 +27,7 @@ class DecisionsScreen extends ConsumerWidget {
             style: TextStyle(fontWeight: FontWeight.bold)),
       ),
       body: DefaultTabController(
-        length: 3,
+        length: 4,
         child: Column(
           children: [
             const TabBar(
@@ -31,6 +35,7 @@ class DecisionsScreen extends ConsumerWidget {
                 Tab(text: 'All'),
                 Tab(text: 'Overdue Reviews'),
                 Tab(text: 'Outcomes'),
+                Tab(text: 'Matrices'),
               ],
             ),
             Expanded(
@@ -47,6 +52,10 @@ class DecisionsScreen extends ConsumerWidget {
                   _OutcomesTab(
                     entitiesAsync: decisionEntitiesAsync,
                     eventsAsync: decisionEventsAsync,
+                  ),
+                  _MatricesTab(
+                    matricesAsync: allMatricesAsync,
+                    entitiesAsync: entitiesAsync,
                   ),
                 ],
               ),
@@ -218,7 +227,163 @@ class _OutcomesTab extends StatelessWidget {
   }
 }
 
-// ── Cards ─────────────────────────────────────────────────────────────────────
+// ?? Matrices Tab ?????????????????????????????????????????????????????????????
+
+class _MatricesTab extends StatelessWidget {
+  final AsyncValue<List<DecisionMatrix>> matricesAsync;
+  final AsyncValue<List<Entity>> entitiesAsync;
+
+  const _MatricesTab({required this.matricesAsync, required this.entitiesAsync});
+
+  @override
+  Widget build(BuildContext context) {
+    return matricesAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (matrices) => entitiesAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Error: $e')),
+        data: (entities) {
+          if (matrices.isEmpty) {
+            return const EmptyState(
+              icon: Icons.view_list_outlined,
+              title: 'No matrices saved',
+              subtitle: 'Saved evaluations will appear here across all entities',
+            );
+          }
+
+          final entityNames = {for (final entity in entities) entity.id: entity.name};
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: matrices.length,
+            itemBuilder: (_, index) {
+              final matrix = matrices[index];
+              return _MatrixHistoryCard(
+                matrix: matrix,
+                entityName: entityNames[matrix.entityId] ?? matrix.entityId,
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _MatrixHistoryCard extends StatelessWidget {
+  final DecisionMatrix matrix;
+  final String entityName;
+
+  const _MatrixHistoryCard({required this.matrix, required this.entityName});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final parsed = _parseTopResult(matrix.result);
+    final confidence = matrix.confidenceScore ?? 0.0;
+    final label = confidence >= 0.7
+        ? 'High'
+        : confidence >= 0.4
+            ? 'Medium'
+            : 'Low';
+    final labelColor = confidence >= 0.7
+        ? Colors.green
+        : confidence >= 0.4
+            ? Colors.amber
+            : Colors.red;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MatrixScreen(entityId: matrix.entityId, existing: matrix),
+        ),
+      ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: scheme.outlineVariant.withOpacity(0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.account_tree_outlined, size: 16),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(entityName,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                ),
+                _ConfidenceChip(label: label, color: labelColor),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(matrix.question,
+                style: TextStyle(fontSize: 13, color: scheme.onSurface.withOpacity(0.8))),
+            const SizedBox(height: 8),
+            Text('Top result: ${parsed.name} (${parsed.score.toStringAsFixed(2)} / 5.0)'),
+            const SizedBox(height: 4),
+            Text(formatDate(matrix.createdAt),
+                style: TextStyle(fontSize: 11, color: scheme.onSurface.withOpacity(0.55))),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+_ParsedMatrixResult _parseTopResult(String? raw) {
+  if (raw == null || raw.isEmpty) {
+    return const _ParsedMatrixResult(name: 'No result', score: 0.0);
+  }
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is List && decoded.isNotEmpty) {
+      final first = decoded.first;
+      if (first is Map) {
+        final map = Map<String, dynamic>.from(first);
+        return _ParsedMatrixResult(
+          name: (map['name'] ?? 'Unknown').toString(),
+          score: (map['weightedScore'] as num?)?.toDouble() ?? 0.0,
+        );
+      }
+    }
+  } catch (_) {}
+  return const _ParsedMatrixResult(name: 'No result', score: 0.0);
+}
+
+class _ParsedMatrixResult {
+  final String name;
+  final double score;
+
+  const _ParsedMatrixResult({required this.name, required this.score});
+}
+
+class _ConfidenceChip extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _ConfidenceChip({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
+// ?? Cards ????????????????????????????????????????????????????????????????????
 
 class _DecisionEntityCard extends ConsumerWidget {
   final Entity entity;

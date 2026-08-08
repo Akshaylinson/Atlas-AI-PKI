@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'tables.dart';
+import '../models/models.dart';
 
 part 'app_database.g.dart';
 
@@ -22,7 +23,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -35,11 +36,41 @@ class AppDatabase extends _$AppDatabase {
         await customStatement(
             'ALTER TABLE entities ADD COLUMN profile_image_path TEXT;');
       }
+      if (from < 4) {
+        await customStatement('''
+          CREATE TABLE IF NOT EXISTS decision_matrices (
+            id TEXT NOT NULL PRIMARY KEY,
+            entity_id TEXT NOT NULL,
+            question TEXT NOT NULL,
+            criteria TEXT NOT NULL DEFAULT '[]',
+            options TEXT NOT NULL DEFAULT '[]',
+            result TEXT,
+            confidence_score REAL,
+            created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+          );
+        ''');
+      }
     },
     beforeOpen: (details) async {
+      await _ensureDecisionMatricesTable();
       await _repairLegacyNullRows();
     },
   );
+
+  Future<void> _ensureDecisionMatricesTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS decision_matrices (
+        id TEXT NOT NULL PRIMARY KEY,
+        entity_id TEXT NOT NULL,
+        question TEXT NOT NULL,
+        criteria TEXT NOT NULL DEFAULT '[]',
+        options TEXT NOT NULL DEFAULT '[]',
+        result TEXT,
+        confidence_score REAL,
+        created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+      );
+    ''');
+  }
 
   Future<void> _repairLegacyNullRows() async {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
@@ -145,8 +176,94 @@ class AppDatabase extends _$AppDatabase {
   Future<void> deleteEvent(String id) =>
       (delete(events)..where((e) => e.id.equals(id))).go();
 
-  // ── Relationships ─────────────────────────────────────────────────────────
+  Future<List<DecisionMatrix>> getMatricesForEntity(String entityId) async {
+    final rows = await customSelect(
+      '''
+      SELECT id, entity_id, question, criteria, options, result, confidence_score, created_at
+      FROM decision_matrices
+      WHERE entity_id = ?
+      ORDER BY created_at DESC
+      ''',
+      variables: [Variable.withString(entityId)],
+    ).get();
+    return rows.map(_matrixFromRow).toList();
+  }
 
+  Stream<List<DecisionMatrix>> watchMatricesForEntity(String entityId) {
+    return customSelect(
+      '''
+      SELECT id, entity_id, question, criteria, options, result, confidence_score, created_at
+      FROM decision_matrices
+      WHERE entity_id = ?
+      ORDER BY created_at DESC
+      ''',
+      variables: [Variable.withString(entityId)],
+    ).watch().map((rows) => rows.map(_matrixFromRow).toList());
+  }
+
+  Stream<List<DecisionMatrix>> watchAllMatrices() {
+    return customSelect(
+      '''
+      SELECT id, entity_id, question, criteria, options, result, confidence_score, created_at
+      FROM decision_matrices
+      ORDER BY created_at DESC
+      ''',
+    ).watch().map((rows) => rows.map(_matrixFromRow).toList());
+  }
+
+  Future<List<DecisionMatrix>> getAllMatrices() async {
+    final rows = await customSelect(
+      '''
+      SELECT id, entity_id, question, criteria, options, result, confidence_score, created_at
+      FROM decision_matrices
+      ORDER BY created_at DESC
+      ''',
+    ).get();
+    return rows.map(_matrixFromRow).toList();
+  }
+
+  Future<void> upsertMatrix(DecisionMatrix matrix) => customStatement('''
+    INSERT INTO decision_matrices (
+      id, entity_id, question, criteria, options, result, confidence_score, created_at
+    ) VALUES (
+      '${_escapeSql(matrix.id)}',
+      '${_escapeSql(matrix.entityId)}',
+      '${_escapeSql(matrix.question)}',
+      '${_escapeSql(matrix.criteria)}',
+      '${_escapeSql(matrix.options)}',
+      ${matrix.result == null ? 'NULL' : "'${_escapeSql(matrix.result!)}'"},
+      ${matrix.confidenceScore == null ? 'NULL' : matrix.confidenceScore},
+      ${matrix.createdAt.millisecondsSinceEpoch}
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      entity_id = excluded.entity_id,
+      question = excluded.question,
+      criteria = excluded.criteria,
+      options = excluded.options,
+      result = excluded.result,
+      confidence_score = excluded.confidence_score,
+      created_at = excluded.created_at;
+  ''');
+
+  Future<void> deleteMatrix(String id) =>
+      customStatement("DELETE FROM decision_matrices WHERE id = '${_escapeSql(id)}'");
+
+  DecisionMatrix _matrixFromRow(QueryRow row) {
+    return DecisionMatrix(
+      id: row.read<String>('id'),
+      entityId: row.read<String>('entity_id'),
+      question: row.read<String>('question'),
+      criteria: row.read<String>('criteria'),
+      options: row.read<String>('options'),
+      result: row.read<String?>('result'),
+      confidenceScore: row.read<double?>('confidence_score'),
+      createdAt: DateTime.fromMillisecondsSinceEpoch(row.read<int>('created_at')),
+    );
+  }
+
+  String _escapeSql(String value) => value.replaceAll("'", "''");
+
+  // -- Relationships ---------------------------------------------------------
   Future<List<Relationship>> getRelationshipsForEntity(String entityId) =>
       (select(relationships)
             ..where((r) =>
@@ -264,3 +381,4 @@ LazyDatabase _openConnection() {
     return NativeDatabase.createInBackground(File(dbPath));
   });
 }
+

@@ -182,3 +182,26 @@ class DecisionReview {
   });
 }
 
+
+
+class DecisionMatrix {
+  final String id;
+  final String entityId;
+  final String question;
+  final String criteria;
+  final String options;
+  final String? result;
+  final double? confidenceScore;
+  final DateTime createdAt;
+
+  const DecisionMatrix({
+    required this.id,
+    required this.entityId,
+    required this.question,
+    required this.criteria,
+    required this.options,
+    this.result,
+    this.confidenceScore,
+    required this.createdAt,
+  });
+}

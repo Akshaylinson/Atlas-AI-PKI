@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/material.dart';
 import '../database/app_database.dart';
+import '../models/models.dart';
 import '../services/pki_pipeline.dart';
 import '../services/retrieval_engine.dart';
 import '../services/analytics_engine.dart';
@@ -112,6 +113,13 @@ final eventsForEntityProvider = StreamProvider.family<List<Event>, String>((ref,
   return ref.watch(databaseProvider).watchEventsForEntity(entityId);
 });
 
+final matricesForEntityProvider = StreamProvider.family<List<DecisionMatrix>, String>((ref, entityId) {
+  return ref.watch(databaseProvider).watchMatricesForEntity(entityId);
+});
+
+final allMatricesProvider = StreamProvider<List<DecisionMatrix>>((ref) {
+  return ref.watch(databaseProvider).watchAllMatrices();
+});
 final recentEventsProvider = FutureProvider<List<Event>>((ref) {
   return ref.watch(databaseProvider).getRecentEvents(limit: 20);
 });
@@ -255,5 +263,7 @@ class DashboardStats {
     required this.highConfidencePatterns,
   });
 }
+
+
 
 
