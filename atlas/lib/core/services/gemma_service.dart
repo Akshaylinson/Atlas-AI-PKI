@@ -36,6 +36,8 @@ class GemmaService {
 
   Future<bool> loadModel(String installDir) => _loader.load(installDir);
 
+  Future<String> generateRaw(String prompt) => _loader.generate(prompt);
+
   void clearSession() {
     _sessionMemory.clear();
     _activeEntityId = null;

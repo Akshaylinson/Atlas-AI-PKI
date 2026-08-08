@@ -101,64 +101,93 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
   }
 
   Widget _buildSetupPhase(BuildContext context, String entityLabel) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
+    return Column(
       children: [
-        SectionHeader(title: 'Setup'),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _questionController,
-          decoration: InputDecoration(
-            labelText: 'Decision question',
-            hintText: 'Should I hire Alvin for Project X?',
-            border: const OutlineInputBorder(),
-            helperText: 'This matrix is about $entityLabel',
-          ),
-          minLines: 2,
-          maxLines: 4,
-          onChanged: (_) => setState(() {}),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'Criteria',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            children: [
+              SectionHeader(title: 'Setup'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _questionController,
+                decoration: InputDecoration(
+                  labelText: 'Decision question',
+                  hintText: 'Should I hire Alvin for Project X?',
+                  border: const OutlineInputBorder(),
+                  helperText: 'This matrix is about $entityLabel',
+                ),
+                minLines: 2,
+                maxLines: 4,
+                onChanged: (_) => setState(() {}),
               ),
-            ),
-            TextButton.icon(
-              onPressed: _addCriterion,
-              icon: const Icon(Icons.add),
-              label: const Text('Add Criterion'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        if (_criteria.isEmpty)
-          const EmptyState(
-            icon: Icons.rule_outlined,
-            title: 'No criteria yet',
-            subtitle: 'Add at least two criteria to continue',
-          )
-        else
-          ..._criteria.asMap().entries.map((entry) => _buildCriterionRow(entry.key, entry.value)),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: _loadingSuggestions ? null : _suggestCriteriaWithAi,
-          icon: _loadingSuggestions
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Criteria',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _addCriterion,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add Criterion'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (_criteria.isEmpty)
+                const EmptyState(
+                  icon: Icons.rule_outlined,
+                  title: 'No criteria yet',
+                  subtitle: 'Add at least two criteria to continue',
                 )
-              : const Icon(Icons.auto_awesome),
-          label: Text(_loadingSuggestions ? 'Suggesting...' : 'Suggest with AI'),
+              else
+                ..._criteria.asMap().entries.map((entry) => _buildCriterionRow(entry.key, entry.value)),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
-        const SizedBox(height: 16),
-        FilledButton(
-          onPressed: _canGoToScoring ? () => setState(() => _phase = 1) : null,
-          child: const Text('Next'),
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            border: Border(
+              top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.4)),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 52,
+                  child: OutlinedButton.icon(
+                    onPressed: _loadingSuggestions ? null : _suggestCriteriaWithAi,
+                    icon: _loadingSuggestions
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.auto_awesome),
+                    label: Text(_loadingSuggestions ? 'Suggesting...' : 'Suggest with AI'),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SizedBox(
+                  height: 52,
+                  child: FilledButton(
+                    onPressed: _canGoToScoring ? () => setState(() => _phase = 1) : null,
+                    child: const Text('Next'),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -459,8 +488,8 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
         ..writeln(jsonEncode(recentNotes));
 
       final service = ref.read(gemmaServiceProvider.notifier).service;
-      final response = await service.query(prompt.toString());
-      final suggestions = _parseCriteriaSuggestions(response.answer);
+      final rawResponse = await service.generateRaw(prompt.toString());
+      final suggestions = _parseCriteriaSuggestions(rawResponse);
       if (suggestions.isEmpty) {
         throw Exception('No criteria suggestions returned');
       }

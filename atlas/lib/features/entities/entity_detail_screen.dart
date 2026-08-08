@@ -1,991 +1,991 @@
-import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:fl_chart/fl_chart.dart';
-import 'dart:convert';
-import 'package:open_filex/open_filex.dart';
-import '../../core/providers/providers.dart';
-import '../../core/database/app_database.dart';
-import '../../core/models/models.dart';
-import '../../shared/widgets/widgets.dart';
-import '../../shared/theme/app_theme.dart';
-import '../../shared/utils/utils.dart';
-import '../camera/image_analysis_screen.dart';
-import '../decisions/matrix_screen.dart';
-import 'entity_form_screen.dart';
-import '../events/event_form_screen.dart';
-import '../events/event_detail_screen.dart';
-
-class EntityDetailScreen extends ConsumerWidget {
-  final String entityId;
-
-  const EntityDetailScreen({super.key, required this.entityId});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final entityAsync = ref.watch(entityByIdProvider(entityId));
-    final eventsAsync = ref.watch(eventsForEntityProvider(entityId));
-    final statsAsync = ref.watch(entityStatsProvider(entityId));
-    final relsAsync = ref.watch(relationshipsForEntityProvider(entityId));
-
-    return entityAsync.when(
-      loading: () =>
-          const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (e, _) => Scaffold(body: Center(child: Text('Error: $e'))),
-      data: (entity) {
-        if (entity == null) {
-          return const Scaffold(
-              body: Center(child: Text('Entity not found')));
-        }
-        final scheme = Theme.of(context).colorScheme;
-        Color parseColor(String? s) {
-          if (s == null) return scheme.primary;
-          final v = int.tryParse(s) ??
-              int.tryParse(s.replaceFirst('0x', ''), radix: 16) ??
-              int.tryParse(s.replaceFirst('#', ''), radix: 16);
-          return v != null ? Color(v) : scheme.primary;
-        }
-        final color = parseColor(entity.color);
-        final tags = parseStringListJson(entity.tags);
-        final hasProfileImage = entity.profileImagePath != null &&
-            File(entity.profileImagePath!).existsSync();
-
-        return Scaffold(
-          appBar: AppBar(
-            title: Text(entity.name),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.edit_outlined),
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => EntityFormScreen(entity: entity)),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline),
-                onPressed: () => _confirmDelete(context, ref),
-              ),
-            ],
-          ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) =>
-                      EventFormScreen(prelinkedEntityId: entityId)),
-            ),
-            icon: const Icon(Icons.add),
-            label: const Text('Add Event'),
-          ),
-          body: DefaultTabController(
-            length: 5,
-            child: NestedScrollView(
-              headerSliverBuilder: (context, _) => [
-                SliverToBoxAdapter(
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    color: color.withValues(alpha: 0.08),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 56,
-                              height: 56,
-                              decoration: BoxDecoration(
-                                color: color.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(16),
-                                image: hasProfileImage
-                                    ? DecorationImage(
-                                        image: FileImage(
-                                            File(entity.profileImagePath!)),
-                                        fit: BoxFit.cover,
-                                      )
-                                    : null,
-                              ),
-                              child: !hasProfileImage
-                                  ? Center(
-                                      child: Text(
-                                        entity.icon ?? (entity.name.isNotEmpty ? entity.name[0].toUpperCase() : '?'),
-                                        style: TextStyle(
-                                          fontSize: entity.icon != null ? 28 : 22,
-                                          fontWeight: FontWeight.bold,
-                                          color: color,
-                                        ),
-                                      ),
-                                    )
-                                  : null,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(entity.name,
-                                        style: const TextStyle(
-                                            fontSize: 20,
-                                            fontWeight: FontWeight.bold)),
-                                  ),
-                                  if (entity.isDecision) ...[
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.amber
-                                            .withValues(alpha: 0.2),
-                                        borderRadius:
-                                            BorderRadius.circular(8),
-                                      ),
-                                      child: const Text('Decision',
-                                          style: TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.amber,
-                                              fontWeight: FontWeight.w600)),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (entity.description != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 10),
-                            child: _ExpandableDescription(
-                              description: entity.description!,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withValues(alpha: 0.7),
-                            ),
-                          ),
-                        if (tags.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 10),
-                            child: Wrap(
-                              spacing: 6,
-                              children:
-                                  tags.map((t) => TagChip(tag: t)).toList(),
-                            ),
-                          ),
-                        const SizedBox(height: 8),
-                        Text('Created ${formatDate(entity.createdAt)}',
-                            style: TextStyle(
-                                fontSize: 11,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withValues(alpha: 0.5))),
-                      ],
-                    ),
-                  ),
-                ),
-                const SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _TabBarDelegate(),
-                ),
-              ],
-              body: TabBarView(
-                children: [
-                  _TimelineTab(eventsAsync: eventsAsync),
-                  _StatsTab(statsAsync: statsAsync),
-                  _GraphTab(entityId: entityId, relsAsync: relsAsync),
-                  _EvaluateTab(entity: entity),
-                  _GalleryTab(eventsAsync: eventsAsync),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete Entity?'),
-        content: const Text('This will permanently delete this entity.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      await ref.read(databaseProvider).deleteEntity(entityId);
-      if (context.mounted) Navigator.pop(context);
-    }
-  }
-}
-
-// ── Tab Bar Delegate ─────────────────────────────────────────────────────────
-
-class _TabBarDelegate extends SliverPersistentHeaderDelegate {
-  const _TabBarDelegate();
-
-  @override
-  double get minExtent => 48;
-  @override
-  double get maxExtent => 48;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(
-      color: Theme.of(context).scaffoldBackgroundColor,
-      child: const TabBar(
-        tabs: [
-          Tab(text: 'Timeline'),
-          Tab(text: 'Stats'),
-          Tab(text: 'Graph'),
-          Tab(text: 'Evaluate'),
-          Tab(text: 'Gallery'),
-        ],
-      ),
-    );
-  }
-
-  @override
-  bool shouldRebuild(_TabBarDelegate oldDelegate) => false;
-}
-
-// ── Timeline Tab ──────────────────────────────────────────────────────────────
-
-class _TimelineTab extends StatelessWidget {
-  final AsyncValue<List<Event>> eventsAsync;
-
-  const _TimelineTab({required this.eventsAsync});
-
-  @override
-  Widget build(BuildContext context) {
-    return eventsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
-      data: (events) => events.isEmpty
-          ? const EmptyState(
-              icon: Icons.event_note_outlined,
-              title: 'No events yet',
-              subtitle: 'Add events linked to this entity',
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: events.length,
-              itemBuilder: (_, i) => _TimelineEventTile(
-                  event: events[i], isLast: i == events.length - 1),
-            ),
-    );
-  }
-}
-
-class _TimelineEventTile extends StatelessWidget {
-  final Event event;
-  final bool isLast;
-
-  const _TimelineEventTile({required this.event, required this.isLast});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final moodColor = event.mood != null
-        ? (moodColors[event.mood] ?? Colors.grey)
-        : scheme.primary;
-
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => EventDetailScreen(eventId: event.id),
-        ),
-      ),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 40,
-              child: Column(
-                children: [
-                  Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                        color: moodColor, shape: BoxShape.circle),
-                  ),
-                  if (!isLast)
-                    Expanded(
-                      child: Container(
-                          width: 2, color: scheme.outlineVariant),
-                    ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(formatDateTime(event.timestamp),
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: scheme.onSurface.withValues(alpha: 0.5))),
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: scheme.surfaceContainerHighest
-                            .withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: scheme.outlineVariant.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (event.title != null) ...[
-                            Text(
-                              event.title!,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w700, fontSize: 16),
-                            ),
-                            const SizedBox(height: 6),
-                          ],
-                          Text(
-                            event.note,
-                            style: const TextStyle(fontSize: 13),
-                            maxLines: 10,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (event.note.length > 300)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Text(
-                                'Read more',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: scheme.primary,
-                                    fontWeight: FontWeight.w500),
-                              ),
-                            ),
-                          if (event.mood != null || event.importance > 1)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Row(
-                                children: [
-                                  if (event.mood != null)
-                                    Text(
-                                        '${moodEmojis[event.mood] ?? ''} ${event.mood}',
-                                        style:
-                                            const TextStyle(fontSize: 12)),
-                                  const Spacer(),
-                                  Row(
-                                    children: List.generate(
-                                      event.importance,
-                                      (_) => const Icon(Icons.star,
-                                          size: 12, color: Colors.amber),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          Builder(builder: (_) {
-                            final attachments =
-                                List.from(jsonDecode(event.attachments));
-                            final hasVoice = event.voiceNotePath != null;
-                            if (attachments.isEmpty && !hasVoice) {
-                              return const SizedBox.shrink();
-                            }
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Wrap(
-                                spacing: 6,
-                                children: [
-                                  if (attachments.isNotEmpty)
-                                    _BadgeChip(
-                                      icon: Icons.attach_file,
-                                      label:
-                                          '${attachments.length} attachment${attachments.length > 1 ? 's' : ''}',
-                                      color: scheme.primary,
-                                    ),
-                                  if (hasVoice)
-                                    const _BadgeChip(
-                                      icon: Icons.mic,
-                                      label: 'Voice note',
-                                      color: Colors.red,
-                                    ),
-                                ],
-                              ),
-                            );
-                          }),
-                          if (event.isDecision)
-                            Container(
-                              margin: const EdgeInsets.only(top: 6),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.amber.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: const Text('Decision',
-                                  style: TextStyle(
-                                      fontSize: 10,
-                                      color: Colors.amber,
-                                      fontWeight: FontWeight.w600)),
-                            ),
-                          const SizedBox(height: 6),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              Icon(Icons.chevron_right,
-                                  size: 14,
-                                  color: scheme.onSurface
-                                      .withValues(alpha: 0.3)),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Stats Tab ─────────────────────────────────────────────────────────────────
-
-class _StatsTab extends StatelessWidget {
-  final AsyncValue<EntityStatistic?> statsAsync;
-
-  const _StatsTab({required this.statsAsync});
-
-  @override
-  Widget build(BuildContext context) {
-    return statsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
-      data: (stats) {
-        if (stats == null) {
-          return const EmptyState(
-            icon: Icons.bar_chart_outlined,
-            title: 'No statistics yet',
-            subtitle: 'Statistics will appear after you add events',
-          );
-        }
-        final moodDist =
-            Map<String, int>.from(jsonDecode(stats.moodDistribution));
-        final monthlyActivity =
-            Map<String, int>.from(jsonDecode(stats.monthlyActivity));
-
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.4,
-              children: [
-                StatCard(
-                    label: 'Total Events',
-                    value: stats.totalEvents.toString(),
-                    icon: Icons.event_note,
-                    color: Colors.blue),
-                StatCard(
-                    label: 'Decisions',
-                    value: stats.totalDecisions.toString(),
-                    icon: Icons.lightbulb,
-                    color: Colors.amber),
-                StatCard(
-                    label: 'Avg Mood',
-                    value:
-                        '${(stats.avgMoodScore * 100).toStringAsFixed(0)}%',
-                    icon: Icons.mood,
-                    color: Colors.green),
-                StatCard(
-                    label: 'Avg Importance',
-                    value: stats.avgImportance.toStringAsFixed(1),
-                    icon: Icons.star,
-                    color: Colors.orange),
-              ],
-            ),
-            const SizedBox(height: 24),
-            if (moodDist.isNotEmpty) ...[
-              const SectionHeader(title: 'Mood Distribution'),
-              const SizedBox(height: 12),
-              SizedBox(
-                  height: 180,
-                  child: _MoodBarChart(distribution: moodDist)),
-              const SizedBox(height: 24),
-            ],
-            if (monthlyActivity.isNotEmpty) ...[
-              const SectionHeader(title: 'Monthly Activity'),
-              const SizedBox(height: 12),
-              SizedBox(
-                  height: 160,
-                  child: _MonthlyChart(activity: monthlyActivity)),
-            ],
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _MoodBarChart extends StatelessWidget {
-  final Map<String, int> distribution;
-
-  const _MoodBarChart({required this.distribution});
-
-  @override
-  Widget build(BuildContext context) {
-    final entries = distribution.entries.toList();
-    return BarChart(BarChartData(
-      barGroups: entries.asMap().entries.map((e) {
-        final color = moodColors[e.value.key] ?? Colors.grey;
-        return BarChartGroupData(
-          x: e.key,
-          barRods: [
-            BarChartRodData(
-              toY: e.value.value.toDouble(),
-              color: color,
-              width: 20,
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ],
-        );
-      }).toList(),
-      gridData: const FlGridData(show: false),
-      borderData: FlBorderData(show: false),
-      titlesData: FlTitlesData(
-        leftTitles:
-            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        topTitles:
-            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        rightTitles:
-            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        bottomTitles: AxisTitles(
-          sideTitles: SideTitles(
-            showTitles: true,
-            getTitlesWidget: (v, _) {
-              final idx = v.toInt();
-              if (idx < 0 || idx >= entries.length) {
-                return const SizedBox.shrink();
-              }
-              final key = entries[idx].key;
-              return Text(moodEmojis[key] ?? '',
-                  style: const TextStyle(fontSize: 16));
-            },
-          ),
-        ),
-      ),
-    ));
-  }
-}
-
-class _MonthlyChart extends StatelessWidget {
-  final Map<String, int> activity;
-
-  const _MonthlyChart({required this.activity});
-
-  @override
-  Widget build(BuildContext context) {
-    final sorted = activity.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
-    final spots = sorted
-        .asMap()
-        .entries
-        .map((e) => FlSpot(e.key.toDouble(), e.value.value.toDouble()))
-        .toList();
-
-    return LineChart(LineChartData(
-      lineBarsData: [
-        LineChartBarData(
-          spots: spots,
-          isCurved: true,
-          color: Theme.of(context).colorScheme.primary,
-          barWidth: 2,
-          dotData: const FlDotData(show: false),
-          belowBarData: BarAreaData(
-            show: true,
-            color: Theme.of(context)
-                .colorScheme
-                .primary
-                .withValues(alpha: 0.1),
-          ),
-        ),
-      ],
-      gridData: const FlGridData(show: false),
-      borderData: FlBorderData(show: false),
-      titlesData: FlTitlesData(
-        leftTitles:
-            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        topTitles:
-            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        rightTitles:
-            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        bottomTitles: AxisTitles(
-          sideTitles: SideTitles(
-            showTitles: true,
-            getTitlesWidget: (v, _) {
-              final i = v.toInt();
-              if (i >= sorted.length) return const SizedBox.shrink();
-              final parts = sorted[i].key.split('-');
-              return Text(parts.length > 1 ? parts[1] : '',
-                  style: const TextStyle(fontSize: 10));
-            },
-          ),
-        ),
-      ),
-    ));
-  }
-}
-
-// ── Graph Tab ─────────────────────────────────────────────────────────────────
-
-class _GraphTab extends ConsumerWidget {
-  final String entityId;
-  final AsyncValue<List<Relationship>> relsAsync;
-
-  const _GraphTab({required this.entityId, required this.relsAsync});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return relsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
-      data: (rels) => rels.isEmpty
-          ? const EmptyState(
-              icon: Icons.account_tree_outlined,
-              title: 'No relationships yet',
-              subtitle:
-                  'Relationships are auto-detected when entities appear together in events',
-            )
-          : ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: rels.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (_, i) => _RelationshipTile(
-                rel: rels[i],
-                currentEntityId: entityId,
-              ),
-            ),
-    );
-  }
-}
-
-class _RelationshipTile extends ConsumerWidget {
-  final Relationship rel;
-  final String currentEntityId;
-
-  const _RelationshipTile(
-      {required this.rel, required this.currentEntityId});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final otherId = rel.fromEntityId == currentEntityId
-        ? rel.toEntityId
-        : rel.fromEntityId;
-    final otherAsync = ref.watch(entityByIdProvider(otherId));
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.link, size: 18),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(rel.relationshipType.replaceAll('_', ' '),
-                    style: const TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.w500)),
-                otherAsync.when(
-                  loading: () => const Text('...'),
-                  error: (_, __) => const Text('Unknown'),
-                  data: (e) => Text(e?.name ?? 'Unknown',
-                      style:
-                          const TextStyle(fontWeight: FontWeight.w600)),
-                ),
-              ],
-            ),
-          ),
-          Text('${(rel.strength * 100).toStringAsFixed(0)}%',
-              style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(context).colorScheme.primary)),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Gallery Tab ────────────────────────────────────────────────────────────────
-
-class _GalleryItem {
-  final Attachment attachment;
-  final DateTime eventDate;
-  _GalleryItem({required this.attachment, required this.eventDate});
-}
-
-class _GalleryTab extends StatelessWidget {
-  final AsyncValue<List<Event>> eventsAsync;
-
-  const _GalleryTab({required this.eventsAsync});
-
-  @override
-  Widget build(BuildContext context) {
-    return eventsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
-      data: (events) {
-        // Collect all attachments + voice notes across all events, sorted by date
-        final items = <_GalleryItem>[];
-        for (final event in events) {
-          final attachments = Attachment.listFromJson(event.attachments);
-          for (final att in attachments) {
-            items.add(_GalleryItem(
-                attachment: att, eventDate: event.timestamp));
-          }
-          if (event.voiceNotePath != null) {
-            items.add(_GalleryItem(
-              attachment: Attachment(
-                id: 'voice_${event.id}',
-                path: event.voiceNotePath!,
-                type: AttachmentType.audio,
-                name: 'Voice note',
-              ),
-              eventDate: event.timestamp,
-            ));
-          }
-        }
-        // Sort newest first
-        items.sort((a, b) => b.eventDate.compareTo(a.eventDate));
-
-        if (items.isEmpty) {
-          return const EmptyState(
-            icon: Icons.photo_library_outlined,
-            title: 'No attachments yet',
-            subtitle: 'Files attached to events will appear here',
-          );
-        }
-
-        return GridView.builder(
-          padding: const EdgeInsets.all(4),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            crossAxisSpacing: 2,
-            mainAxisSpacing: 2,
-          ),
-          itemCount: items.length,
-          itemBuilder: (_, i) => _GalleryCell(item: items[i]),
-        );
-      },
-    );
-  }
-}
-
-class _GalleryCell extends StatelessWidget {
-  final _GalleryItem item;
-
-  const _GalleryCell({required this.item});
-
-  @override
-  Widget build(BuildContext context) {
-    final att = item.attachment;
-    final scheme = Theme.of(context).colorScheme;
-
-    if (att.type == AttachmentType.image) {
-      return GestureDetector(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ImageAnalysisScreen(imagePath: att.path),
-          ),
-        ),
-        child: Image.file(File(att.path),
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _PlaceholderCell(
-                icon: Icons.broken_image_outlined, scheme: scheme)),
-      );
-    }
-
-    // Non-image: show icon tile, tap to open
-    IconData icon;
-    Color iconColor;
-    switch (att.type) {
-      case AttachmentType.video:
-        icon = Icons.videocam;
-        iconColor = Colors.blue;
-        break;
-      case AttachmentType.audio:
-        icon = Icons.mic;
-        iconColor = Colors.red;
-        break;
-      case AttachmentType.pdf:
-        icon = Icons.picture_as_pdf;
-        iconColor = Colors.orange;
-        break;
-      default:
-        icon = Icons.insert_drive_file;
-        iconColor = scheme.primary;
-    }
-
-    return GestureDetector(
-      onTap: () => OpenFilex.open(att.path),
-      child: _PlaceholderCell(
-        icon: icon,
-        iconColor: iconColor,
-        label: att.name,
-        scheme: scheme,
-      ),
-    );
-  }
-}
-
-class _PlaceholderCell extends StatelessWidget {
-  final IconData icon;
-  final Color? iconColor;
-  final String? label;
-  final ColorScheme scheme;
-
-  const _PlaceholderCell(
-      {required this.icon,
-      this.iconColor,
-      this.label,
-      required this.scheme});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 32, color: iconColor ?? scheme.primary),
-          if (label != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              child: Text(
-                label!,
-                style: const TextStyle(fontSize: 9),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Expandable Description ───────────────────────────────────────────────────
-
-class _ExpandableDescription extends StatefulWidget {
-  final String description;
-  final Color color;
-
-  const _ExpandableDescription(
-      {required this.description, required this.color});
-
-  @override
-  State<_ExpandableDescription> createState() =>
-      _ExpandableDescriptionState();
-}
-
-class _ExpandableDescriptionState extends State<_ExpandableDescription> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    const collapsedLines = 3;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          widget.description,
-          style: TextStyle(color: widget.color),
-          maxLines: _expanded ? null : collapsedLines,
-          overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
-        ),
-        if (widget.description.length > 120)
-          GestureDetector(
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                _expanded ? 'Show less' : 'Show more',
-                style: TextStyle(
-                    fontSize: 12,
-                    color: scheme.primary,
-                    fontWeight: FontWeight.w500),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-// ── Badge Chip ────────────────────────────────────────────────────────────────
-
-class _BadgeChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  const _BadgeChip(
-      {required this.icon, required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 11, color: color),
-          const SizedBox(width: 3),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 11, color: color, fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
-}
-
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'dart:convert';
+import 'package:open_filex/open_filex.dart';
+import '../../core/providers/providers.dart';
+import '../../core/database/app_database.dart';
+import '../../core/models/models.dart';
+import '../../shared/widgets/widgets.dart';
+import '../../shared/theme/app_theme.dart';
+import '../../shared/utils/utils.dart';
+import '../camera/image_analysis_screen.dart';
+import '../decisions/matrix_screen.dart';
+import 'entity_form_screen.dart';
+import '../events/event_form_screen.dart';
+import '../events/event_detail_screen.dart';
+
+class EntityDetailScreen extends ConsumerWidget {
+  final String entityId;
+
+  const EntityDetailScreen({super.key, required this.entityId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final entityAsync = ref.watch(entityByIdProvider(entityId));
+    final eventsAsync = ref.watch(eventsForEntityProvider(entityId));
+    final statsAsync = ref.watch(entityStatsProvider(entityId));
+    final relsAsync = ref.watch(relationshipsForEntityProvider(entityId));
+
+    return entityAsync.when(
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (e, _) => Scaffold(body: Center(child: Text('Error: $e'))),
+      data: (entity) {
+        if (entity == null) {
+          return const Scaffold(
+              body: Center(child: Text('Entity not found')));
+        }
+        final scheme = Theme.of(context).colorScheme;
+        Color parseColor(String? s) {
+          if (s == null) return scheme.primary;
+          final v = int.tryParse(s) ??
+              int.tryParse(s.replaceFirst('0x', ''), radix: 16) ??
+              int.tryParse(s.replaceFirst('#', ''), radix: 16);
+          return v != null ? Color(v) : scheme.primary;
+        }
+        final color = parseColor(entity.color);
+        final tags = parseStringListJson(entity.tags);
+        final hasProfileImage = entity.profileImagePath != null &&
+            File(entity.profileImagePath!).existsSync();
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(entity.name),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.add),
+                tooltip: 'Add Event',
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) =>
+                          EventFormScreen(prelinkedEntityId: entityId)),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => EntityFormScreen(entity: entity)),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () => _confirmDelete(context, ref),
+              ),
+            ],
+          ),
+          body: DefaultTabController(
+            length: 5,
+            child: NestedScrollView(
+              headerSliverBuilder: (context, _) => [
+                SliverToBoxAdapter(
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    color: color.withValues(alpha: 0.08),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                color: color.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(16),
+                                image: hasProfileImage
+                                    ? DecorationImage(
+                                        image: FileImage(
+                                            File(entity.profileImagePath!)),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null,
+                              ),
+                              child: !hasProfileImage
+                                  ? Center(
+                                      child: Text(
+                                        entity.icon ?? (entity.name.isNotEmpty ? entity.name[0].toUpperCase() : '?'),
+                                        style: TextStyle(
+                                          fontSize: entity.icon != null ? 28 : 22,
+                                          fontWeight: FontWeight.bold,
+                                          color: color,
+                                        ),
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(entity.name,
+                                        style: const TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold)),
+                                  ),
+                                  if (entity.isDecision) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.amber
+                                            .withValues(alpha: 0.2),
+                                        borderRadius:
+                                            BorderRadius.circular(8),
+                                      ),
+                                      child: const Text('Decision',
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.amber,
+                                              fontWeight: FontWeight.w600)),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (entity.description != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: _ExpandableDescription(
+                              description: entity.description!,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.7),
+                            ),
+                          ),
+                        if (tags.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Wrap(
+                              spacing: 6,
+                              children:
+                                  tags.map((t) => TagChip(tag: t)).toList(),
+                            ),
+                          ),
+                        const SizedBox(height: 8),
+                        Text('Created ${formatDate(entity.createdAt)}',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(alpha: 0.5))),
+                      ],
+                    ),
+                  ),
+                ),
+                const SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _TabBarDelegate(),
+                ),
+              ],
+              body: TabBarView(
+                children: [
+                  _TimelineTab(eventsAsync: eventsAsync),
+                  _StatsTab(statsAsync: statsAsync),
+                  _GraphTab(entityId: entityId, relsAsync: relsAsync),
+                  _EvaluateTab(entity: entity),
+                  _GalleryTab(eventsAsync: eventsAsync),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete Entity?'),
+        content: const Text('This will permanently delete this entity.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await ref.read(databaseProvider).deleteEntity(entityId);
+      if (context.mounted) Navigator.pop(context);
+    }
+  }
+}
+
+// ── Tab Bar Delegate ─────────────────────────────────────────────────────────
+
+class _TabBarDelegate extends SliverPersistentHeaderDelegate {
+  const _TabBarDelegate();
+
+  @override
+  double get minExtent => 48;
+  @override
+  double get maxExtent => 48;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: const TabBar(
+        tabs: [
+          Tab(text: 'Timeline'),
+          Tab(text: 'Stats'),
+          Tab(text: 'Graph'),
+          Tab(text: 'Evaluate'),
+          Tab(text: 'Gallery'),
+        ],
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(_TabBarDelegate oldDelegate) => false;
+}
+
+// ── Timeline Tab ──────────────────────────────────────────────────────────────
+
+class _TimelineTab extends StatelessWidget {
+  final AsyncValue<List<Event>> eventsAsync;
+
+  const _TimelineTab({required this.eventsAsync});
+
+  @override
+  Widget build(BuildContext context) {
+    return eventsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (events) => events.isEmpty
+          ? const EmptyState(
+              icon: Icons.event_note_outlined,
+              title: 'No events yet',
+              subtitle: 'Add events linked to this entity',
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: events.length,
+              itemBuilder: (_, i) => _TimelineEventTile(
+                  event: events[i], isLast: i == events.length - 1),
+            ),
+    );
+  }
+}
+
+class _TimelineEventTile extends StatelessWidget {
+  final Event event;
+  final bool isLast;
+
+  const _TimelineEventTile({required this.event, required this.isLast});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final moodColor = event.mood != null
+        ? (moodColors[event.mood] ?? Colors.grey)
+        : scheme.primary;
+
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => EventDetailScreen(eventId: event.id),
+        ),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 40,
+              child: Column(
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                        color: moodColor, shape: BoxShape.circle),
+                  ),
+                  if (!isLast)
+                    Expanded(
+                      child: Container(
+                          width: 2, color: scheme.outlineVariant),
+                    ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(formatDateTime(event.timestamp),
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: scheme.onSurface.withValues(alpha: 0.5))),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest
+                            .withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: scheme.outlineVariant.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (event.title != null) ...[
+                            Text(
+                              event.title!,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700, fontSize: 16),
+                            ),
+                            const SizedBox(height: 6),
+                          ],
+                          Text(
+                            event.note,
+                            style: const TextStyle(fontSize: 13),
+                            maxLines: 10,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (event.note.length > 300)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                'Read more',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: scheme.primary,
+                                    fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          if (event.mood != null || event.importance > 1)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Row(
+                                children: [
+                                  if (event.mood != null)
+                                    Text(
+                                        '${moodEmojis[event.mood] ?? ''} ${event.mood}',
+                                        style:
+                                            const TextStyle(fontSize: 12)),
+                                  const Spacer(),
+                                  Row(
+                                    children: List.generate(
+                                      event.importance,
+                                      (_) => const Icon(Icons.star,
+                                          size: 12, color: Colors.amber),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          Builder(builder: (_) {
+                            final attachments =
+                                List.from(jsonDecode(event.attachments));
+                            final hasVoice = event.voiceNotePath != null;
+                            if (attachments.isEmpty && !hasVoice) {
+                              return const SizedBox.shrink();
+                            }
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Wrap(
+                                spacing: 6,
+                                children: [
+                                  if (attachments.isNotEmpty)
+                                    _BadgeChip(
+                                      icon: Icons.attach_file,
+                                      label:
+                                          '${attachments.length} attachment${attachments.length > 1 ? 's' : ''}',
+                                      color: scheme.primary,
+                                    ),
+                                  if (hasVoice)
+                                    const _BadgeChip(
+                                      icon: Icons.mic,
+                                      label: 'Voice note',
+                                      color: Colors.red,
+                                    ),
+                                ],
+                              ),
+                            );
+                          }),
+                          if (event.isDecision)
+                            Container(
+                              margin: const EdgeInsets.only(top: 6),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text('Decision',
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.amber,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Icon(Icons.chevron_right,
+                                  size: 14,
+                                  color: scheme.onSurface
+                                      .withValues(alpha: 0.3)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Stats Tab ─────────────────────────────────────────────────────────────────
+
+class _StatsTab extends StatelessWidget {
+  final AsyncValue<EntityStatistic?> statsAsync;
+
+  const _StatsTab({required this.statsAsync});
+
+  @override
+  Widget build(BuildContext context) {
+    return statsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (stats) {
+        if (stats == null) {
+          return const EmptyState(
+            icon: Icons.bar_chart_outlined,
+            title: 'No statistics yet',
+            subtitle: 'Statistics will appear after you add events',
+          );
+        }
+        final moodDist =
+            Map<String, int>.from(jsonDecode(stats.moodDistribution));
+        final monthlyActivity =
+            Map<String, int>.from(jsonDecode(stats.monthlyActivity));
+
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1.4,
+              children: [
+                StatCard(
+                    label: 'Total Events',
+                    value: stats.totalEvents.toString(),
+                    icon: Icons.event_note,
+                    color: Colors.blue),
+                StatCard(
+                    label: 'Decisions',
+                    value: stats.totalDecisions.toString(),
+                    icon: Icons.lightbulb,
+                    color: Colors.amber),
+                StatCard(
+                    label: 'Avg Mood',
+                    value:
+                        '${(stats.avgMoodScore * 100).toStringAsFixed(0)}%',
+                    icon: Icons.mood,
+                    color: Colors.green),
+                StatCard(
+                    label: 'Avg Importance',
+                    value: stats.avgImportance.toStringAsFixed(1),
+                    icon: Icons.star,
+                    color: Colors.orange),
+              ],
+            ),
+            const SizedBox(height: 24),
+            if (moodDist.isNotEmpty) ...[
+              const SectionHeader(title: 'Mood Distribution'),
+              const SizedBox(height: 12),
+              SizedBox(
+                  height: 180,
+                  child: _MoodBarChart(distribution: moodDist)),
+              const SizedBox(height: 24),
+            ],
+            if (monthlyActivity.isNotEmpty) ...[
+              const SectionHeader(title: 'Monthly Activity'),
+              const SizedBox(height: 12),
+              SizedBox(
+                  height: 160,
+                  child: _MonthlyChart(activity: monthlyActivity)),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _MoodBarChart extends StatelessWidget {
+  final Map<String, int> distribution;
+
+  const _MoodBarChart({required this.distribution});
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = distribution.entries.toList();
+    return BarChart(BarChartData(
+      barGroups: entries.asMap().entries.map((e) {
+        final color = moodColors[e.value.key] ?? Colors.grey;
+        return BarChartGroupData(
+          x: e.key,
+          barRods: [
+            BarChartRodData(
+              toY: e.value.value.toDouble(),
+              color: color,
+              width: 20,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ],
+        );
+      }).toList(),
+      gridData: const FlGridData(show: false),
+      borderData: FlBorderData(show: false),
+      titlesData: FlTitlesData(
+        leftTitles:
+            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        topTitles:
+            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles:
+            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        bottomTitles: AxisTitles(
+          sideTitles: SideTitles(
+            showTitles: true,
+            getTitlesWidget: (v, _) {
+              final idx = v.toInt();
+              if (idx < 0 || idx >= entries.length) {
+                return const SizedBox.shrink();
+              }
+              final key = entries[idx].key;
+              return Text(moodEmojis[key] ?? '',
+                  style: const TextStyle(fontSize: 16));
+            },
+          ),
+        ),
+      ),
+    ));
+  }
+}
+
+class _MonthlyChart extends StatelessWidget {
+  final Map<String, int> activity;
+
+  const _MonthlyChart({required this.activity});
+
+  @override
+  Widget build(BuildContext context) {
+    final sorted = activity.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    final spots = sorted
+        .asMap()
+        .entries
+        .map((e) => FlSpot(e.key.toDouble(), e.value.value.toDouble()))
+        .toList();
+
+    return LineChart(LineChartData(
+      lineBarsData: [
+        LineChartBarData(
+          spots: spots,
+          isCurved: true,
+          color: Theme.of(context).colorScheme.primary,
+          barWidth: 2,
+          dotData: const FlDotData(show: false),
+          belowBarData: BarAreaData(
+            show: true,
+            color: Theme.of(context)
+                .colorScheme
+                .primary
+                .withValues(alpha: 0.1),
+          ),
+        ),
+      ],
+      gridData: const FlGridData(show: false),
+      borderData: FlBorderData(show: false),
+      titlesData: FlTitlesData(
+        leftTitles:
+            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        topTitles:
+            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles:
+            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        bottomTitles: AxisTitles(
+          sideTitles: SideTitles(
+            showTitles: true,
+            getTitlesWidget: (v, _) {
+              final i = v.toInt();
+              if (i >= sorted.length) return const SizedBox.shrink();
+              final parts = sorted[i].key.split('-');
+              return Text(parts.length > 1 ? parts[1] : '',
+                  style: const TextStyle(fontSize: 10));
+            },
+          ),
+        ),
+      ),
+    ));
+  }
+}
+
+// ── Graph Tab ─────────────────────────────────────────────────────────────────
+
+class _GraphTab extends ConsumerWidget {
+  final String entityId;
+  final AsyncValue<List<Relationship>> relsAsync;
+
+  const _GraphTab({required this.entityId, required this.relsAsync});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return relsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (rels) => rels.isEmpty
+          ? const EmptyState(
+              icon: Icons.account_tree_outlined,
+              title: 'No relationships yet',
+              subtitle:
+                  'Relationships are auto-detected when entities appear together in events',
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: rels.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (_, i) => _RelationshipTile(
+                rel: rels[i],
+                currentEntityId: entityId,
+              ),
+            ),
+    );
+  }
+}
+
+class _RelationshipTile extends ConsumerWidget {
+  final Relationship rel;
+  final String currentEntityId;
+
+  const _RelationshipTile(
+      {required this.rel, required this.currentEntityId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final otherId = rel.fromEntityId == currentEntityId
+        ? rel.toEntityId
+        : rel.fromEntityId;
+    final otherAsync = ref.watch(entityByIdProvider(otherId));
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.link, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(rel.relationshipType.replaceAll('_', ' '),
+                    style: const TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w500)),
+                otherAsync.when(
+                  loading: () => const Text('...'),
+                  error: (_, __) => const Text('Unknown'),
+                  data: (e) => Text(e?.name ?? 'Unknown',
+                      style:
+                          const TextStyle(fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+          ),
+          Text('${(rel.strength * 100).toStringAsFixed(0)}%',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.primary)),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Gallery Tab ────────────────────────────────────────────────────────────────
+
+class _GalleryItem {
+  final Attachment attachment;
+  final DateTime eventDate;
+  _GalleryItem({required this.attachment, required this.eventDate});
+}
+
+class _GalleryTab extends StatelessWidget {
+  final AsyncValue<List<Event>> eventsAsync;
+
+  const _GalleryTab({required this.eventsAsync});
+
+  @override
+  Widget build(BuildContext context) {
+    return eventsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (events) {
+        // Collect all attachments + voice notes across all events, sorted by date
+        final items = <_GalleryItem>[];
+        for (final event in events) {
+          final attachments = Attachment.listFromJson(event.attachments);
+          for (final att in attachments) {
+            items.add(_GalleryItem(
+                attachment: att, eventDate: event.timestamp));
+          }
+          if (event.voiceNotePath != null) {
+            items.add(_GalleryItem(
+              attachment: Attachment(
+                id: 'voice_${event.id}',
+                path: event.voiceNotePath!,
+                type: AttachmentType.audio,
+                name: 'Voice note',
+              ),
+              eventDate: event.timestamp,
+            ));
+          }
+        }
+        // Sort newest first
+        items.sort((a, b) => b.eventDate.compareTo(a.eventDate));
+
+        if (items.isEmpty) {
+          return const EmptyState(
+            icon: Icons.photo_library_outlined,
+            title: 'No attachments yet',
+            subtitle: 'Files attached to events will appear here',
+          );
+        }
+
+        return GridView.builder(
+          padding: const EdgeInsets.all(4),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 2,
+            mainAxisSpacing: 2,
+          ),
+          itemCount: items.length,
+          itemBuilder: (_, i) => _GalleryCell(item: items[i]),
+        );
+      },
+    );
+  }
+}
+
+class _GalleryCell extends StatelessWidget {
+  final _GalleryItem item;
+
+  const _GalleryCell({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final att = item.attachment;
+    final scheme = Theme.of(context).colorScheme;
+
+    if (att.type == AttachmentType.image) {
+      return GestureDetector(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ImageAnalysisScreen(imagePath: att.path),
+          ),
+        ),
+        child: Image.file(File(att.path),
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _PlaceholderCell(
+                icon: Icons.broken_image_outlined, scheme: scheme)),
+      );
+    }
+
+    // Non-image: show icon tile, tap to open
+    IconData icon;
+    Color iconColor;
+    switch (att.type) {
+      case AttachmentType.video:
+        icon = Icons.videocam;
+        iconColor = Colors.blue;
+        break;
+      case AttachmentType.audio:
+        icon = Icons.mic;
+        iconColor = Colors.red;
+        break;
+      case AttachmentType.pdf:
+        icon = Icons.picture_as_pdf;
+        iconColor = Colors.orange;
+        break;
+      default:
+        icon = Icons.insert_drive_file;
+        iconColor = scheme.primary;
+    }
+
+    return GestureDetector(
+      onTap: () => OpenFilex.open(att.path),
+      child: _PlaceholderCell(
+        icon: icon,
+        iconColor: iconColor,
+        label: att.name,
+        scheme: scheme,
+      ),
+    );
+  }
+}
+
+class _PlaceholderCell extends StatelessWidget {
+  final IconData icon;
+  final Color? iconColor;
+  final String? label;
+  final ColorScheme scheme;
+
+  const _PlaceholderCell(
+      {required this.icon,
+      this.iconColor,
+      this.label,
+      required this.scheme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 32, color: iconColor ?? scheme.primary),
+          if (label != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Text(
+                label!,
+                style: const TextStyle(fontSize: 9),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Expandable Description ───────────────────────────────────────────────────
+
+class _ExpandableDescription extends StatefulWidget {
+  final String description;
+  final Color color;
+
+  const _ExpandableDescription(
+      {required this.description, required this.color});
+
+  @override
+  State<_ExpandableDescription> createState() =>
+      _ExpandableDescriptionState();
+}
+
+class _ExpandableDescriptionState extends State<_ExpandableDescription> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    const collapsedLines = 3;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.description,
+          style: TextStyle(color: widget.color),
+          maxLines: _expanded ? null : collapsedLines,
+          overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+        ),
+        if (widget.description.length > 120)
+          GestureDetector(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                _expanded ? 'Show less' : 'Show more',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w500),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// ── Badge Chip ────────────────────────────────────────────────────────────────
+
+class _BadgeChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _BadgeChip(
+      {required this.icon, required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 3),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 11, color: color, fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+}
+
 class _EvaluateTab extends ConsumerWidget {
   final Entity entity;
   const _EvaluateTab({required this.entity});
@@ -996,33 +996,36 @@ class _EvaluateTab extends ConsumerWidget {
     return matricesAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Error: $e')),
-      data: (matrices) => Stack(
+      data: (matrices) => Column(
         children: [
-          matrices.isEmpty
-              ? EmptyState(
-                  icon: Icons.balance_outlined,
-                  title: 'No evaluations yet',
-                  subtitle: 'Tap + to evaluate a decision about ${entity.name}',
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
-                  itemCount: matrices.length,
-                  itemBuilder: (_, i) => _MatrixSummaryCard(matrix: matrices[i]),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => MatrixScreen(entityId: entity.id),
+                  ),
                 ),
-          Positioned(
-            bottom: 16,
-            right: 16,
-            child: FloatingActionButton.extended(
-              heroTag: 'evaluate_fab',
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MatrixScreen(entityId: entity.id),
-                ),
+                icon: const Icon(Icons.add),
+                label: const Text('New Evaluation'),
               ),
-              icon: const Icon(Icons.add),
-              label: const Text('New Evaluation'),
             ),
+          ),
+          Expanded(
+            child: matrices.isEmpty
+                ? EmptyState(
+                    icon: Icons.balance_outlined,
+                    title: 'No evaluations yet',
+                    subtitle: 'Tap the button above to evaluate a decision about ${entity.name}',
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: matrices.length,
+                    itemBuilder: (_, i) => _MatrixSummaryCard(matrix: matrices[i]),
+                  ),
           ),
         ],
       ),
@@ -1163,4 +1166,4 @@ class _ConfidenceChip extends StatelessWidget {
       ),
     );
   }
-}
+}
