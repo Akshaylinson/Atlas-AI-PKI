@@ -30,7 +30,9 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
     _inputCtrl.clear();
     setState(() => _sending = true);
     await ref.read(aiChatProvider.notifier).sendMessage(text);
+    if (!mounted) return;
     setState(() => _sending = false);
+    _inputFocus.requestFocus();
     _scrollToBottom();
   }
 
@@ -48,12 +50,10 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final messages = ref.watch(aiChatProvider);
     final scheme = Theme.of(context).colorScheme;
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: const Text('AI Assistant',
             style: TextStyle(fontWeight: FontWeight.bold)),
@@ -74,76 +74,24 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
         top: false,
         child: Column(
           children: [
-
-            // Messages
             Expanded(
-              child: messages.isEmpty
-                  ? _WelcomeView(onSuggestionTap: (q) {
-                      _inputCtrl.text = q;
-                      _inputFocus.requestFocus();
-                      _send();
-                    })
-                  : ListView.builder(
-                      controller: _scrollCtrl,
-                      padding: const EdgeInsets.all(16),
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      itemCount: messages.length + (_sending ? 1 : 0),
-                      itemBuilder: (_, i) {
-                        if (i == messages.length) {
-                          return const _TypingIndicator();
-                        }
-                        return _MessageBubble(message: messages[i]);
-                      },
-                    ),
-            ),
-
-            // Input
-            AnimatedPadding(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOut,
-              padding: EdgeInsets.only(bottom: bottomInset),
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                decoration: BoxDecoration(
-                  color: scheme.surface,
-                  border: Border(
-                      top: BorderSide(color: scheme.outlineVariant.withOpacity(0.3))),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        focusNode: _inputFocus,
-                        controller: _inputCtrl,
-                        decoration: InputDecoration(
-                          hintText: 'Ask about your data...',
-                          isDense: true,
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24)),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 10),
-                        ),
-                        maxLines: 3,
-                        minLines: 1,
-                        keyboardType: TextInputType.multiline,
-                        onSubmitted: (_) => _send(),
-                        textInputAction: TextInputAction.send,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    _sending
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : IconButton(
-                            icon: const Icon(Icons.send),
-                            onPressed: _send,
-                          ),
-                  ],
-                ),
+              child: _ChatTranscript(
+                scrollCtrl: _scrollCtrl,
+                onSuggestionTap: (q) {
+                  _inputCtrl.text = q;
+                  _inputFocus.requestFocus();
+                  _send();
+                },
+                showTypingIndicator: _sending,
               ),
+            ),
+            _ChatComposer(
+              controller: _inputCtrl,
+              focusNode: _inputFocus,
+              sending: _sending,
+              onSend: _send,
+              surfaceColor: scheme.surface,
+              outlineColor: scheme.outlineVariant.withOpacity(0.3),
             ),
           ],
         ),
@@ -175,6 +123,110 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
           TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('OK')),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChatTranscript extends ConsumerWidget {
+  final ScrollController scrollCtrl;
+  final ValueChanged<String> onSuggestionTap;
+  final bool showTypingIndicator;
+
+  const _ChatTranscript({
+    required this.scrollCtrl,
+    required this.onSuggestionTap,
+    required this.showTypingIndicator,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final messages = ref.watch(aiChatProvider);
+
+    if (messages.isEmpty) {
+      return _WelcomeView(onSuggestionTap: onSuggestionTap);
+    }
+
+    return ListView.builder(
+      controller: scrollCtrl,
+      padding: const EdgeInsets.all(16),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
+      itemCount: messages.length + (showTypingIndicator ? 1 : 0),
+      itemBuilder: (_, i) {
+        if (i == messages.length) {
+          return const _TypingIndicator();
+        }
+        return _MessageBubble(message: messages[i]);
+      },
+    );
+  }
+}
+
+class _ChatComposer extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final bool sending;
+  final Future<void> Function() onSend;
+  final Color surfaceColor;
+  final Color outlineColor;
+
+  const _ChatComposer({
+    required this.controller,
+    required this.focusNode,
+    required this.sending,
+    required this.onSend,
+    required this.surfaceColor,
+    required this.outlineColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        border: Border(
+          top: BorderSide(color: outlineColor),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              focusNode: focusNode,
+              controller: controller,
+              decoration: InputDecoration(
+                hintText: 'Ask about your data...',
+                isDense: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+              ),
+              maxLines: 3,
+              minLines: 1,
+              keyboardType: TextInputType.multiline,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) {
+                onSend();
+              },
+            ),
+          ),
+          const SizedBox(width: 4),
+          sending
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : IconButton(
+                  icon: const Icon(Icons.send),
+                  onPressed: onSend,
+                ),
         ],
       ),
     );

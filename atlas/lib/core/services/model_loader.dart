@@ -221,11 +221,35 @@ class _GemmaWorkerEngine {
     await gemma.modelManager.setModelPath(modelPath);
 
     await _model?.close();
-    _model = await gemma.createModel(
-      modelType: ModelType.gemmaIt,
-      maxTokens: 1024,
-      preferredBackend: PreferredBackend.cpu,
-    );
+    _model = await _createModelWithFallbacks(gemma);
+  }
+
+  Future<InferenceModel> _createModelWithFallbacks(
+    FlutterGemmaPlugin gemma,
+  ) async {
+    final backends = <PreferredBackend?>[
+      PreferredBackend.gpuMixed,
+      PreferredBackend.gpuFloat16,
+      PreferredBackend.gpuFull,
+      PreferredBackend.gpu,
+      null,
+      PreferredBackend.cpu,
+    ];
+
+    Object? lastError;
+    for (final backend in backends) {
+      try {
+        return await gemma.createModel(
+          modelType: ModelType.gemmaIt,
+          maxTokens: 512,
+          preferredBackend: backend,
+        );
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
+    throw StateError('Failed to create Gemma model: $lastError');
   }
 
   Future<String> generate(String prompt) async {
