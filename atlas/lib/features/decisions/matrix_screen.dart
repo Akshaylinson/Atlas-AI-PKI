@@ -119,7 +119,6 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
                 ),
                 minLines: 2,
                 maxLines: 4,
-                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 16),
               Row(
@@ -150,44 +149,49 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
             ],
           ),
         ),
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            border: Border(
-              top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.4)),
-            ),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: SizedBox(
-                  height: 52,
-                  child: OutlinedButton.icon(
-                    onPressed: _loadingSuggestions ? null : _suggestCriteriaWithAi,
-                    icon: _loadingSuggestions
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.auto_awesome),
-                    label: Text(_loadingSuggestions ? 'Suggesting...' : 'Suggest with AI'),
-                  ),
+        AnimatedBuilder(
+          animation: _questionController,
+          builder: (context, _) {
+            return Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                border: Border(
+                  top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.4)),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: SizedBox(
-                  height: 52,
-                  child: FilledButton(
-                    onPressed: _canGoToScoring ? () => setState(() => _phase = 1) : null,
-                    child: const Text('Next'),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: OutlinedButton.icon(
+                        onPressed: _loadingSuggestions ? null : _suggestCriteriaWithAi,
+                        icon: _loadingSuggestions
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.auto_awesome),
+                        label: Text(_loadingSuggestions ? 'Suggesting...' : 'Suggest with AI'),
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: FilledButton(
+                        onPressed: _canGoToScoring ? () => setState(() => _phase = 1) : null,
+                        child: const Text('Next'),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         ),
       ],
     );
@@ -355,15 +359,17 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
                       labelText: 'Criterion ${index + 1}',
                       border: const OutlineInputBorder(),
                     ),
-                    onChanged: (newName) => setState(() {
-                      final oldKey = criterion.liveKey;
+                    onChanged: (newName) {
+                      final oldKey = criterion.name.trim();
                       criterion.name = newName;
+                      final newKey = newName.trim();
+                      if (oldKey == newKey) return;
                       for (final option in _options) {
                         if (option.scores.containsKey(oldKey)) {
-                          option.scores[newName] = option.scores.remove(oldKey)!;
+                          option.scores[newKey] = option.scores.remove(oldKey)!;
                         }
                       }
-                    }),
+                    },
                   ),
                 ),
                 IconButton(

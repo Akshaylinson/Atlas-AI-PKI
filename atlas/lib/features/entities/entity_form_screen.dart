@@ -11,6 +11,18 @@ import '../../shared/widgets/widgets.dart';
 import '../../shared/utils/utils.dart';
 import 'package:drift/drift.dart' show Value;
 
+class _FieldCtrl {
+  final TextEditingController key;
+  final TextEditingController value;
+  _FieldCtrl(String k, String v)
+      : key = TextEditingController(text: k),
+        value = TextEditingController(text: v);
+  void dispose() {
+    key.dispose();
+    value.dispose();
+  }
+}
+
 class EntityFormScreen extends ConsumerStatefulWidget {
   final Entity? entity; // null = create, non-null = edit
 
@@ -25,6 +37,7 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
   final _nameCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _tagCtrl = TextEditingController();
+  final _iconCtrl = TextEditingController();
 
   List<String> _tags = [];
   Color _color = const Color(0xFF6750A4);
@@ -32,7 +45,8 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
   String? _profileImagePath;
   String _status = 'active';
   bool _isDecision = false;
-  List<Map<String, String>> _customFields = [];
+  final List<Map<String, String>> _customFields = [];
+  final List<_FieldCtrl> _customFieldCtrls = [];
 
   // Decision fields
   final _optionsCtrl = TextEditingController();
@@ -55,6 +69,7 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
         _color = Color(int.tryParse(e.color!) ?? const Color(0xFF6750A4).toARGB32());
       }
       _icon = e.icon;
+      _iconCtrl.text = e.icon ?? '';
       _profileImagePath = e.profileImagePath;
       _status = e.status;
       _isDecision = e.isDecision;
@@ -66,9 +81,10 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
       _decisionConfidence = e.decisionConfidence ?? 5;
       _reviewDate = e.decisionReviewDate;
       final fields = parseStringMapJson(e.customFields);
-      _customFields = fields.entries
-          .map((e) => {'key': e.key, 'value': e.value.toString(), 'type': 'text'})
-          .toList();
+      for (final entry in fields.entries) {
+        _customFields.add({'key': entry.key, 'value': entry.value.toString(), 'type': 'text'});
+        _customFieldCtrls.add(_FieldCtrl(entry.key, entry.value.toString()));
+      }
     }
   }
 
@@ -77,9 +93,13 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
     _nameCtrl.dispose();
     _descCtrl.dispose();
     _tagCtrl.dispose();
+    _iconCtrl.dispose();
     _optionsCtrl.dispose();
     _reasoningCtrl.dispose();
     _expectedOutcomeCtrl.dispose();
+    for (final c in _customFieldCtrls) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -142,7 +162,10 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
   }
 
   void _addCustomField() {
-    setState(() => _customFields.add({'key': '', 'value': '', 'type': 'text'}));
+    setState(() {
+      _customFields.add({'key': '', 'value': '', 'type': 'text'});
+      _customFieldCtrls.add(_FieldCtrl('', ''));
+    });
   }
 
   @override
@@ -275,12 +298,12 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
                       const Text('Icon / Emoji', style: TextStyle(fontSize: 12)),
                       const SizedBox(height: 6),
                       TextFormField(
-                        initialValue: _icon,
+                        controller: _iconCtrl,
                         decoration: const InputDecoration(
                           hintText: '🚀 or leave blank',
                           isDense: true,
                         ),
-                        onChanged: (v) => setState(() => _icon = v.isEmpty ? null : v),
+                        onChanged: (v) => _icon = v.isEmpty ? null : v,
                       ),
                     ],
                   ),
@@ -351,8 +374,8 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
                 ),
               ],
             ),
-            ..._customFields.asMap().entries.map((entry) {
-              final i = entry.key;
+            ...List.generate(_customFields.length, (i) {
+              final ctrl = _customFieldCtrls[i];
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
@@ -361,8 +384,7 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
                       child: TextField(
                         decoration: const InputDecoration(
                             hintText: 'Field name', isDense: true),
-                        controller:
-                            TextEditingController(text: _customFields[i]['key']),
+                        controller: ctrl.key,
                         onChanged: (v) => _customFields[i]['key'] = v,
                       ),
                     ),
@@ -371,15 +393,17 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
                       child: TextField(
                         decoration: const InputDecoration(
                             hintText: 'Value', isDense: true),
-                        controller:
-                            TextEditingController(text: _customFields[i]['value']),
+                        controller: ctrl.value,
                         onChanged: (v) => _customFields[i]['value'] = v,
                       ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.remove_circle_outline, size: 18),
-                      onPressed: () =>
-                          setState(() => _customFields.removeAt(i)),
+                      onPressed: () => setState(() {
+                        _customFieldCtrls[i].dispose();
+                        _customFieldCtrls.removeAt(i);
+                        _customFields.removeAt(i);
+                      }),
                     ),
                   ],
                 ),

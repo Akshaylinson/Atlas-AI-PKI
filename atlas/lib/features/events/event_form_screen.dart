@@ -17,6 +17,19 @@ import '../../shared/widgets/widgets.dart';
 import '../../shared/utils/utils.dart';
 import '../../shared/theme/app_theme.dart';
 
+// Holds a stable pair of controllers for one custom field row.
+class _FieldCtrl {
+  final TextEditingController key;
+  final TextEditingController value;
+  _FieldCtrl(String k, String v)
+      : key = TextEditingController(text: k),
+        value = TextEditingController(text: v);
+  void dispose() {
+    key.dispose();
+    value.dispose();
+  }
+}
+
 class EventFormScreen extends ConsumerStatefulWidget {
   final Event? event;
   final String? prelinkedEntityId;
@@ -33,6 +46,7 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
   final _noteCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
   final _tagCtrl = TextEditingController();
+  final _durationCtrl = TextEditingController();
 
   String? _selectedMood;
   int _importance = 3;
@@ -41,7 +55,9 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
   List<Attachment> _attachments = [];
   String? _voiceNotePath;
   List<String> _linkedEntityIds = [];
-  List<Map<String, String>> _customFields = [];
+  // Parallel lists: _customFields holds the data, _customFieldCtrls holds stable controllers.
+  final List<Map<String, String>> _customFields = [];
+  final List<_FieldCtrl> _customFieldCtrls = [];
   DateTime _timestamp = DateTime.now();
 
   bool _isDecision = false;
@@ -57,6 +73,10 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
   final _player = AudioPlayer();
   bool _isPlaying = false;
 
+  // Snapshot of entities loaded once — avoids re-watching the stream inside the form
+  // so that PKI pipeline DB writes don't trigger form rebuilds and dismiss the keyboard.
+  List<Entity> _entities = [];
+
   @override
   void initState() {
     super.initState();
@@ -68,6 +88,7 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
       _selectedMood = e.mood;
       _importance = e.importance;
       _durationMinutes = e.durationMinutes;
+      _durationCtrl.text = e.durationMinutes?.toString() ?? '';
       _tags = parseStringListJson(e.tags);
       _attachments = Attachment.listFromJson(e.attachments);
       _voiceNotePath = e.voiceNotePath;
@@ -82,14 +103,19 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
       _decisionConfidence = e.decisionConfidence ?? 5;
       _reviewDate = e.decisionReviewDate;
       final fields = parseStringMapJson(e.customFields);
-      _customFields = fields.entries
-          .map((e) => {'key': e.key, 'value': e.value.toString(), 'type': 'text'})
-          .toList();
+      for (final entry in fields.entries) {
+        _customFields.add({'key': entry.key, 'value': entry.value.toString(), 'type': 'text'});
+        _customFieldCtrls.add(_FieldCtrl(entry.key, entry.value.toString()));
+      }
     }
     if (widget.prelinkedEntityId != null &&
         !_linkedEntityIds.contains(widget.prelinkedEntityId)) {
       _linkedEntityIds.add(widget.prelinkedEntityId!);
     }
+    // Load entities once — no stream watch so PKI writes don't rebuild the form.
+    ref.read(databaseProvider).getAllEntities().then((list) {
+      if (mounted) setState(() => _entities = list);
+    });
   }
 
   @override
@@ -98,11 +124,15 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
     _noteCtrl.dispose();
     _locationCtrl.dispose();
     _tagCtrl.dispose();
+    _durationCtrl.dispose();
     _decisionOptionsCtrl.dispose();
     _decisionReasoningCtrl.dispose();
     _decisionExpectedCtrl.dispose();
     _recorder.dispose();
     _player.dispose();
+    for (final c in _customFieldCtrls) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -154,7 +184,7 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
       timestamp: Value(_timestamp),
     ));
 
-    // Run PKI pipeline in background
+    // Fire-and-forget: PKI runs after we pop so its DB writes never hit this form.
     pki.process(id);
 
     if (!mounted) return;
@@ -212,7 +242,7 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
       setState(() => _isPlaying = true);
       _player.playerStateStream.listen((state) {
         if (state.processingState == ProcessingState.completed) {
-          setState(() => _isPlaying = false);
+          if (mounted) setState(() => _isPlaying = false);
         }
       });
     }
@@ -245,9 +275,23 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
     }
   }
 
+  void _addCustomField() {
+    setState(() {
+      _customFields.add({'key': '', 'value': '', 'type': 'text'});
+      _customFieldCtrls.add(_FieldCtrl('', ''));
+    });
+  }
+
+  void _removeCustomField(int i) {
+    setState(() {
+      _customFieldCtrls[i].dispose();
+      _customFieldCtrls.removeAt(i);
+      _customFields.removeAt(i);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final entitiesAsync = ref.watch(entitiesStreamProvider);
     final isEdit = widget.event != null;
 
     return Scaffold(
@@ -364,45 +408,40 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: TextFormField(
-                    initialValue: _durationMinutes?.toString(),
+                    controller: _durationCtrl,
                     decoration: const InputDecoration(
                       labelText: 'Duration (min)',
                       prefixIcon: Icon(Icons.timer_outlined, size: 18),
                       isDense: true,
                     ),
                     keyboardType: TextInputType.number,
-                    onChanged: (v) =>
-                        _durationMinutes = int.tryParse(v),
+                    onChanged: (v) => _durationMinutes = int.tryParse(v),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
 
-            // Linked Entities
+            // Linked Entities — uses snapshot loaded once in initState, not a watched stream.
             const Text('Linked Entities',
                 style: TextStyle(fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
-            entitiesAsync.when(
-              loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
-              data: (entities) => Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: entities
-                    .map((entity) => FilterChip(
-                          label: Text(entity.name),
-                          selected: _linkedEntityIds.contains(entity.id),
-                          onSelected: (selected) => setState(() {
-                            if (selected) {
-                              _linkedEntityIds.add(entity.id);
-                            } else {
-                              _linkedEntityIds.remove(entity.id);
-                            }
-                          }),
-                        ))
-                    .toList(),
-              ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: _entities
+                  .map((entity) => FilterChip(
+                        label: Text(entity.name),
+                        selected: _linkedEntityIds.contains(entity.id),
+                        onSelected: (selected) => setState(() {
+                          if (selected) {
+                            _linkedEntityIds.add(entity.id);
+                          } else {
+                            _linkedEntityIds.remove(entity.id);
+                          }
+                        }),
+                      ))
+                  .toList(),
             ),
             const SizedBox(height: 16),
 
@@ -511,7 +550,7 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Custom Fields
+            // Custom Fields — controllers are stored in state, never recreated in build().
             Row(
               children: [
                 const Text('Custom Fields',
@@ -519,15 +558,14 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
                         TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                 const Spacer(),
                 TextButton.icon(
-                  onPressed: () => setState(() =>
-                      _customFields.add({'key': '', 'value': '', 'type': 'text'})),
+                  onPressed: _addCustomField,
                   icon: const Icon(Icons.add, size: 16),
                   label: const Text('Add'),
                 ),
               ],
             ),
-            ..._customFields.asMap().entries.map((entry) {
-              final i = entry.key;
+            ...List.generate(_customFields.length, (i) {
+              final ctrl = _customFieldCtrls[i];
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
@@ -536,8 +574,7 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
                       child: TextField(
                         decoration: const InputDecoration(
                             hintText: 'Field name', isDense: true),
-                        controller: TextEditingController(
-                            text: _customFields[i]['key']),
+                        controller: ctrl.key,
                         onChanged: (v) => _customFields[i]['key'] = v,
                       ),
                     ),
@@ -546,15 +583,13 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
                       child: TextField(
                         decoration: const InputDecoration(
                             hintText: 'Value', isDense: true),
-                        controller: TextEditingController(
-                            text: _customFields[i]['value']),
+                        controller: ctrl.value,
                         onChanged: (v) => _customFields[i]['value'] = v,
                       ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.remove_circle_outline, size: 18),
-                      onPressed: () =>
-                          setState(() => _customFields.removeAt(i)),
+                      onPressed: () => _removeCustomField(i),
                     ),
                   ],
                 ),

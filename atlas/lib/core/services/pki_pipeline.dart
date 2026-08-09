@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:isolate';
 import 'dart:math';
 import 'package:uuid/uuid.dart';
@@ -15,6 +16,22 @@ class PKIPipeline {
   PKIPipeline(this._db);
 
   Future<void> process(String eventId) async {
+    try {
+      final dbPath = await AppDatabase.resolveDatabasePath();
+      await Isolate.run(() async {
+        final backgroundDb = AppDatabase.forPath(dbPath);
+        try {
+          await PKIPipeline(backgroundDb)._process(eventId);
+        } finally {
+          await backgroundDb.close();
+        }
+      });
+    } catch (e, st) {
+      developer.log('PKI pipeline failed', error: e, stackTrace: st);
+    }
+  }
+
+  Future<void> _process(String eventId) async {
     final event = await _db.getEventById(eventId);
     if (event == null) return;
 
@@ -24,7 +41,6 @@ class PKIPipeline {
     await _updateStatistics(event);
     await _detectPatternChanges(event);
     await _refreshConfidenceScores();
-    await _invalidateAnalyticsCache();
   }
 
   // ── Step 1: Extract entities mentioned in note ────────────────────────────
@@ -253,7 +269,6 @@ class PKIPipeline {
   }
 
   // ── Step 6: Refresh confidence scores ────────────────────────────────────
-
   Future<void> _refreshConfidenceScores() async {
     final allPatterns = await _db.getAllPatterns();
     final now = DateTime.now();
@@ -279,12 +294,6 @@ class PKIPipeline {
         updatedAt: Value(now),
       ));
     }
-  }
-
-  // ── Step 7: Invalidate stale cache ───────────────────────────────────────
-
-  Future<void> _invalidateAnalyticsCache() async {
-    // Cache entries expire after 1 hour by default; just let them expire naturally
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -321,4 +330,3 @@ class PKIPipeline {
     return vector;
   }
 }
-

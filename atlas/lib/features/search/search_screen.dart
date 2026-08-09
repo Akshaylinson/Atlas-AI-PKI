@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers/providers.dart';
@@ -19,12 +20,14 @@ class SearchScreen extends ConsumerStatefulWidget {
 
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _ctrl = TextEditingController();
+  Timer? _debounce;
   EvidencePackage? _results;
   bool _searching = false;
   String _lastQuery = '';
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _ctrl.dispose();
     super.dispose();
   }
@@ -44,6 +47,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     });
   }
 
+  void _onQueryChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      _search(value);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -60,20 +71,21 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               decoration: InputDecoration(
                 hintText: 'Search events, entities, patterns...',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon: _ctrl.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _ctrl.clear();
-                          setState(() => _results = null);
-                        },
-                      )
-                    : null,
+                suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _ctrl,
+                  builder: (_, value, __) {
+                    if (value.text.isEmpty) return const SizedBox.shrink();
+                    return IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _ctrl.clear();
+                        setState(() => _results = null);
+                      },
+                    );
+                  },
+                ),
               ),
-              onChanged: (v) {
-                setState(() {});
-                if (v.length > 2) _search(v);
-              },
+              onChanged: _onQueryChanged,
               onSubmitted: _search,
             ),
           ),

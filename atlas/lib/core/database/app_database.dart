@@ -21,6 +21,19 @@ part 'app_database.g.dart';
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
+  AppDatabase.forPath(String dbPath) : super(NativeDatabase(File(dbPath)));
+
+  static Future<String> resolveDatabasePath() async {
+    // Use active Atlas package dir if set, otherwise fall back to documents dir.
+    final prefs = await SharedPreferences.getInstance();
+    final packageDir = prefs.getString('atlas_package_dir');
+    if (packageDir != null && Directory(packageDir).existsSync()) {
+      return p.join(packageDir, 'atlas.db');
+    }
+
+    final docsDir = await getApplicationDocumentsDirectory();
+    return p.join(docsDir.path, 'atlas.db');
+  }
 
   @override
   int get schemaVersion => 4;
@@ -368,16 +381,7 @@ class AppDatabase extends _$AppDatabase {
 
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
-    // Use active Atlas package dir if set, otherwise fall back to documents dir
-    final prefs = await SharedPreferences.getInstance();
-    final packageDir = prefs.getString('atlas_package_dir');
-    final String dbPath;
-    if (packageDir != null && Directory(packageDir).existsSync()) {
-      dbPath = p.join(packageDir, 'atlas.db');
-    } else {
-      final docsDir = await getApplicationDocumentsDirectory();
-      dbPath = p.join(docsDir.path, 'atlas.db');
-    }
+    final dbPath = await AppDatabase.resolveDatabasePath();
     return NativeDatabase.createInBackground(File(dbPath));
   });
 }
