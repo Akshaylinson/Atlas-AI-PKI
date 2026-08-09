@@ -12,7 +12,6 @@ import '../services/model_installer.dart';
 import '../services/model_loader.dart';
 import '../services/openrouter_service.dart';
 
-
 final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.system);
 
 enum AiMode { off, api }
@@ -44,14 +43,12 @@ final decisionIntelligenceProvider = Provider<DecisionIntelligenceEngine>((ref) 
 final modelInstallerProvider = Provider<ModelInstaller>((ref) => ModelInstaller());
 
 final modelInstallProvider = FutureProvider<String?>((ref) async {
-  // First try the user-saved path from DB.
   final savedPath = await ref.watch(databaseProvider).getSetting('gemma_model_path');
   if (savedPath != null &&
       savedPath.isNotEmpty &&
       supportedGemmaModelExtensions.any(savedPath.toLowerCase().endsWith)) {
     return savedPath;
   }
-  // Fallback: try bundled asset install.
   return ref.watch(modelInstallerProvider).ensureInstalled();
 });
 
@@ -96,19 +93,12 @@ class _AiModeNotifier extends StateNotifier<AiMode> {
 
   Future<void> _load() async {
     final raw = await _ref.read(databaseProvider).getSetting('ai_mode');
-    if (raw == 'api') {
-      state = AiMode.api;
-    } else {
-      state = AiMode.off;
-    }
+    if (mounted) state = (raw == 'api') ? AiMode.api : AiMode.off;
   }
 
   Future<void> set(AiMode mode) async {
     state = mode;
-    await _ref.read(databaseProvider).setSetting(
-          'ai_mode',
-          mode == AiMode.api ? 'api' : 'off',
-        );
+    await _ref.read(databaseProvider).setSetting('ai_mode', mode == AiMode.api ? 'api' : 'off');
   }
 }
 
@@ -152,6 +142,7 @@ final matricesForEntityProvider = StreamProvider.family<List<DecisionMatrix>, St
 final allMatricesProvider = StreamProvider<List<DecisionMatrix>>((ref) {
   return ref.watch(databaseProvider).watchAllMatrices();
 });
+
 final recentEventsProvider = FutureProvider<List<Event>>((ref) {
   return ref.watch(databaseProvider).getRecentEvents(limit: 20);
 });
@@ -241,7 +232,6 @@ class AIChatNotifier extends StateNotifier<List<ChatMessage>> {
     state = [...state, userMsg];
     final mode = _ref.read(aiModeProvider);
 
-    // Build history from current messages (excluding the one just added).
     final history = state
         .where((m) => m.id != userMsg.id)
         .map((m) => {'role': m.isUser ? 'user' : 'assistant', 'text': m.text})
@@ -252,41 +242,40 @@ class AIChatNotifier extends StateNotifier<List<ChatMessage>> {
       String finalAnswer = response.answer;
 
       if (mode == AiMode.api) {
-        final apiKey =
-            await _ref.read(databaseProvider).getSetting('openrouter_api_key');
+        final apiKey = await _ref.read(databaseProvider).getSetting('openrouter_api_key');
         if (apiKey == null || apiKey.trim().isEmpty) {
-          finalAnswer =
-              'OpenRouter API key not set. Go to Settings and add your API key.';
+          finalAnswer = 'OpenRouter API key not set. Go to Settings and add your API key.';
         } else {
           final openrouter = OpenRouterService(apiKey);
-          final enrichedPrompt = '''
-System: Atlas is a personal knowledge assistant that answers only from evidence.
-Evidence from the knowledge base:
-${response.answer}
 
-Original user question:
-$text
-''';
-          finalAnswer = await openrouter.chat(enrichedPrompt);
+          // Check if KB actually found real data or just returned a no-match message
+          final hasKbData = response.context.isNotEmpty &&
+              ((response.context['entities'] as List?)?.isNotEmpty == true ||
+               (response.context['events'] as List?)?.isNotEmpty == true ||
+               (response.context['patterns'] as List?)?.isNotEmpty == true);
+
+          final prompt = hasKbData
+              ? 'You are Atlas, a personal knowledge assistant. Answer the user question using ONLY the evidence below. Be concise and natural.\n\nEvidence:\n${response.answer}\n\nQuestion: $text'
+              : 'You are Atlas, a personal knowledge assistant. The user asked: "$text"\n\nThe knowledge base returned: "${response.answer}"\n\nRespond helpfully. If the entity or data is not found, say so clearly and suggest the user verify the name or add data first.';
+
+          finalAnswer = await openrouter.chat(prompt);
         }
       }
 
-      final aiMsg = ChatMessage(
+      state = [...state, ChatMessage(
         id: '${DateTime.now().millisecondsSinceEpoch}_ai',
         text: finalAnswer,
         isUser: false,
         timestamp: DateTime.now(),
         context: response.context,
-      );
-      state = [...state, aiMsg];
+      )];
     } catch (e) {
-      final errMsg = ChatMessage(
+      state = [...state, ChatMessage(
         id: '${DateTime.now().millisecondsSinceEpoch}_err',
         text: 'Error: $e',
         isUser: false,
         timestamp: DateTime.now(),
-      );
-      state = [...state, errMsg];
+      )];
     }
   }
 
@@ -319,7 +308,3 @@ class DashboardStats {
     required this.highConfidencePatterns,
   });
 }
-
-
-
-
