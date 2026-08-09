@@ -247,12 +247,12 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
                       ),
                     ),
                     ..._criteria.map((criterion) {
-                      final score = option.scores[criterion.name] ?? 0;
+                      final score = option.scores[criterion.liveKey] ?? 0;
                       return DataCell(_ScorePicker(
                         score: score,
                         onChanged: (value) {
                           setState(() {
-                            option.scores[criterion.name] = value;
+                            option.scores[criterion.liveKey] = value;
                           });
                         },
                       ));
@@ -355,7 +355,15 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
                       labelText: 'Criterion ${index + 1}',
                       border: const OutlineInputBorder(),
                     ),
-                    onChanged: (_) => setState(() {}),
+                    onChanged: (newName) => setState(() {
+                      final oldKey = criterion.liveKey;
+                      criterion.name = newName;
+                      for (final option in _options) {
+                        if (option.scores.containsKey(oldKey)) {
+                          option.scores[newName] = option.scores.remove(oldKey)!;
+                        }
+                      }
+                    }),
                   ),
                 ),
                 IconButton(
@@ -395,7 +403,7 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
     setState(() {
       final scores = <String, int>{};
       for (final criterion in _criteria) {
-        scores[criterion.controller.text.trim().isEmpty ? criterion.name : criterion.controller.text.trim()] = 0;
+        scores[criterion.liveKey] = 0;
       }
       _options.add(_OptionDraft(name: name, scores: scores));
       _optionNameController.clear();
@@ -412,10 +420,7 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
     if (_options.length < 2 || _criteria.length < 2) return false;
     for (final option in _options) {
       for (final criterion in _criteria) {
-        final name = criterion.controller.text.trim();
-        if ((option.scores[name.isEmpty ? criterion.name : name] ?? 0) == 0) {
-          return false;
-        }
+        if ((option.scores[criterion.liveKey] ?? 0) == 0) return false;
       }
     }
     return true;
@@ -424,13 +429,13 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
   void _calculateResults() {
     final criteria = _activeCriteria;
     final options = _activeOptions;
-    final totalWeight = criteria.fold<double>(0.0, (sum, criterion) => sum + criterion.weight);
+    final totalWeight = criteria.fold<double>(0.0, (sum, c) => sum + c.weight);
 
     final results = <_ResultRow>[];
     for (final option in options) {
       final weightedScore = criteria.fold<double>(
         0.0,
-        (sum, criterion) => sum + (option.scores[criterion.name] ?? 0) * (criterion.weight / totalWeight),
+        (sum, c) => sum + (option.scores[c.liveKey] ?? 0) * (c.weight / totalWeight),
       );
       results.add(_ResultRow(name: option.name, weightedScore: weightedScore));
     }
@@ -439,7 +444,7 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
     final separation = results.length > 1
         ? (results[0].weightedScore - results[1].weightedScore) / 5.0
         : 1.0;
-    final maxWeight = criteria.map((criterion) => criterion.weight / totalWeight).reduce(math.max);
+    final maxWeight = criteria.map((c) => c.weight / totalWeight).reduce(math.max);
     final balance = maxWeight > 0.6 ? 0.5 : 1.0;
     final confidence = ((separation * 0.6) + (balance * 0.4)).clamp(0.0, 1.0);
 
@@ -451,10 +456,7 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
   }
 
   List<_CriterionDraft> get _activeCriteria {
-    return _criteria
-        .where((criterion) => criterion.controller.text.trim().isNotEmpty || criterion.name.isNotEmpty)
-        .map((criterion) => criterion.copyWith(name: criterion.controller.text.trim().isEmpty ? criterion.name : criterion.controller.text.trim()))
-        .toList();
+    return _criteria.where((c) => c.liveKey.isNotEmpty).toList();
   }
 
   List<_OptionDraft> get _activeOptions {
@@ -480,18 +482,35 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
       final entity = await db.getEntityById(widget.entityId);
       final events = await db.getEventsForEntity(widget.entityId);
       final entityName = entity?.name ?? 'this entity';
-      final recentNotes = events.take(10).map((event) => event.note).toList();
-      final prompt = StringBuffer()
-        ..writeln('Suggest 3 to 5 decision criteria for evaluating $entityName.')
-        ..writeln('Return only a JSON array of strings.')
-        ..writeln('Use the following recent event notes as context:')
-        ..writeln(jsonEncode(recentNotes));
+      // Keep prompt short: max 3 notes, truncated to 60 chars each
+      final notes = events
+          .take(3)
+          .map((e) => e.note.length > 60 ? e.note.substring(0, 60) : e.note)
+          .join('; ');
+      final question = _questionController.text.trim();
+      final ctx = notes.isNotEmpty ? 'Context: $notes.' : '';
+      final prompt =
+          'List 4 short decision criteria for: "$question" about $entityName. $ctx'
+          ' Reply with only a JSON array of strings. Example: ["Cost","Speed","Quality","Risk"]';
 
       final service = ref.read(gemmaServiceProvider.notifier).service;
-      final rawResponse = await service.generateRaw(prompt.toString());
+      final rawResponse = await service.generateRaw(prompt);
       final suggestions = _parseCriteriaSuggestions(rawResponse);
+
       if (suggestions.isEmpty) {
-        throw Exception('No criteria suggestions returned');
+        // Fallback: use generic criteria if model returns nothing parseable
+        final fallback = ['Cost', 'Quality', 'Risk', 'Time'];
+        setState(() {
+          _criteria
+            ..clear()
+            ..addAll(fallback.map((n) => _CriterionDraft(name: n, weight: 0.5)));
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('AI returned no JSON — using generic criteria')),
+          );
+        }
+        return;
       }
 
       setState(() {
@@ -558,12 +577,12 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
     final db = ref.read(databaseProvider);
     final criteria = _activeCriteria;
     final options = _activeOptions;
-    final totalWeight = criteria.fold<double>(0.0, (sum, criterion) => sum + criterion.weight);
+    final totalWeight = criteria.fold<double>(0.0, (sum, c) => sum + c.weight);
     final ranked = <_ResultRow>[];
     for (final option in options) {
       final weightedScore = criteria.fold<double>(
         0.0,
-        (sum, criterion) => sum + (option.scores[criterion.name] ?? 0) * (criterion.weight / totalWeight),
+        (sum, c) => sum + (option.scores[c.liveKey] ?? 0) * (c.weight / totalWeight),
       );
       ranked.add(_ResultRow(name: option.name, weightedScore: weightedScore));
     }
@@ -574,9 +593,9 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
       id: _matrixId,
       entityId: widget.entityId,
       question: _questionController.text.trim(),
-      criteria: jsonEncode(criteria.map((criterion) => {
-            'name': criterion.name,
-            'weight': criterion.weight,
+      criteria: jsonEncode(criteria.map((c) => {
+            'name': c.liveKey,
+            'weight': c.weight,
           }).toList()),
       options: jsonEncode(options.map((option) => {
             'name': option.name,
@@ -677,15 +696,14 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
 
 class _CriterionDraft {
   final TextEditingController controller;
-  final String name;
+  String name;
   double weight;
 
   _CriterionDraft({required this.name, required this.weight})
       : controller = TextEditingController(text: name);
 
-  _CriterionDraft copyWith({String? name, double? weight}) {
-    return _CriterionDraft(name: name ?? this.name, weight: weight ?? this.weight);
-  }
+  /// Always use this as the score map key — it is the live controller text.
+  String get liveKey => controller.text.trim();
 }
 
 class _OptionDraft {

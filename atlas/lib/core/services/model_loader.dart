@@ -47,13 +47,21 @@ class ModelLoader {
 
   Future<String> generate(String prompt) async {
     if (_model == null) throw StateError('Model not loaded');
-    final session = await _model!.createSession();
+    // Re-create model if it was closed due to a previous error
+    InferenceModelSession? session;
     try {
+      session = await _model!.createSession();
       await session.addQueryChunk(Message(text: prompt, isUser: true));
-      final response = await session.getResponse();
-      return response ?? '';
+      // Collect streaming tokens with a 60-second timeout
+      final buffer = StringBuffer();
+      await session
+          .getResponseAsync()
+          .timeout(const Duration(seconds: 60))
+          .forEach(buffer.write);
+      final result = buffer.toString().trim();
+      return result;
     } finally {
-      await session.close();
+      await session?.close();
     }
   }
 
