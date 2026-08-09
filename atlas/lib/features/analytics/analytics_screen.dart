@@ -16,6 +16,7 @@ import '../knowledge_graph/knowledge_graph_screen.dart';
 import '../package/package_setup_screen.dart';
 import '../patterns/patterns_screen.dart';
 import '../search/search_screen.dart';
+import '../events/bulk_event_import_screen.dart';
 
 class AnalyticsScreen extends ConsumerWidget {
   const AnalyticsScreen({super.key});
@@ -636,6 +637,16 @@ class _AnalyticsSettingsScreenState
             onTap: _switchPackage,
           ),
           const _SettingsSectionTitle(title: 'Data'),
+          ListTile(
+            leading: const Icon(Icons.upload_file_outlined),
+            title: const Text('Bulk Event Import'),
+            subtitle: const Text('Paste or upload CSV/text'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const BulkEventImportScreen()),
+            ),
+          ),
           ListTile(
             leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
             title: const Text(
