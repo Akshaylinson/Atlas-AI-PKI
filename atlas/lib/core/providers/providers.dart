@@ -10,9 +10,12 @@ import '../services/gemma_service.dart';
 import '../services/file_storage_service.dart';
 import '../services/model_installer.dart';
 import '../services/model_loader.dart';
+import '../services/openrouter_service.dart';
 
 
 final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.system);
+
+enum AiMode { off, api }
 
 // ── Core Services ─────────────────────────────────────────────────────────────
 
@@ -82,6 +85,35 @@ class GemmaServiceNotifier extends StateNotifier<_ModelState> {
 
 final gemmaServiceProvider = StateNotifierProvider<GemmaServiceNotifier, _ModelState>((ref) {
   return GemmaServiceNotifier(GemmaService(ref.watch(databaseProvider)));
+});
+
+class _AiModeNotifier extends StateNotifier<AiMode> {
+  final Ref _ref;
+
+  _AiModeNotifier(this._ref) : super(AiMode.off) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    final raw = await _ref.read(databaseProvider).getSetting('ai_mode');
+    if (raw == 'api') {
+      state = AiMode.api;
+    } else {
+      state = AiMode.off;
+    }
+  }
+
+  Future<void> set(AiMode mode) async {
+    state = mode;
+    await _ref.read(databaseProvider).setSetting(
+          'ai_mode',
+          mode == AiMode.api ? 'api' : 'off',
+        );
+  }
+}
+
+final aiModeProvider = StateNotifierProvider<_AiModeNotifier, AiMode>((ref) {
+  return _AiModeNotifier(ref);
 });
 
 final fileStorageProvider = Provider<FileStorageService>((ref) {
@@ -195,8 +227,9 @@ class ChatMessage {
 
 class AIChatNotifier extends StateNotifier<List<ChatMessage>> {
   final GemmaService _gemma;
+  final Ref _ref;
 
-  AIChatNotifier(this._gemma) : super([]);
+  AIChatNotifier(this._gemma, this._ref) : super([]);
 
   Future<void> sendMessage(String text) async {
     final userMsg = ChatMessage(
@@ -206,6 +239,7 @@ class AIChatNotifier extends StateNotifier<List<ChatMessage>> {
       timestamp: DateTime.now(),
     );
     state = [...state, userMsg];
+    final mode = _ref.read(aiModeProvider);
 
     // Build history from current messages (excluding the one just added).
     final history = state
@@ -215,9 +249,31 @@ class AIChatNotifier extends StateNotifier<List<ChatMessage>> {
 
     try {
       final response = await _gemma.query(text, history: history);
+      String finalAnswer = response.answer;
+
+      if (mode == AiMode.api) {
+        final apiKey =
+            await _ref.read(databaseProvider).getSetting('openrouter_api_key');
+        if (apiKey == null || apiKey.trim().isEmpty) {
+          finalAnswer =
+              'OpenRouter API key not set. Go to Settings and add your API key.';
+        } else {
+          final openrouter = OpenRouterService(apiKey);
+          final enrichedPrompt = '''
+System: Atlas is a personal knowledge assistant that answers only from evidence.
+Evidence from the knowledge base:
+${response.answer}
+
+Original user question:
+$text
+''';
+          finalAnswer = await openrouter.chat(enrichedPrompt);
+        }
+      }
+
       final aiMsg = ChatMessage(
         id: '${DateTime.now().millisecondsSinceEpoch}_ai',
-        text: response.answer,
+        text: finalAnswer,
         isUser: false,
         timestamp: DateTime.now(),
         context: response.context,
@@ -241,7 +297,7 @@ class AIChatNotifier extends StateNotifier<List<ChatMessage>> {
 }
 
 final aiChatProvider = StateNotifierProvider<AIChatNotifier, List<ChatMessage>>((ref) {
-  return AIChatNotifier(ref.watch(gemmaServiceProvider.notifier).service);
+  return AIChatNotifier(ref.watch(gemmaServiceProvider.notifier).service, ref);
 });
 
 // ── Dashboard Stats Model ─────────────────────────────────────────────────────

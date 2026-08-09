@@ -1,13 +1,12 @@
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/providers/providers.dart';
 import '../../core/services/atlas_package_service.dart';
-import '../search/search_screen.dart';
 import '../package/package_setup_screen.dart';
-
+import '../search/search_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -17,29 +16,60 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  final TextEditingController _apiKeyCtrl = TextEditingController();
+
   String? _modelPath;
   bool _loadingModel = false;
   String _loadingStatus = '';
   Map<String, dynamic> _packageMeta = {};
   String? _packageDir;
+  bool _showApiKey = false;
 
   @override
   void initState() {
     super.initState();
     _loadModelPath();
+    _loadApiKey();
     _loadPackageInfo();
+  }
+
+  @override
+  void dispose() {
+    _apiKeyCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadPackageInfo() async {
     final meta = await AtlasPackageService.getPackageMeta();
-    final dir  = await AtlasPackageService.getActivePackageDir();
-    setState(() { _packageMeta = meta; _packageDir = dir; });
+    final dir = await AtlasPackageService.getActivePackageDir();
+    if (!mounted) return;
+    setState(() {
+      _packageMeta = meta;
+      _packageDir = dir;
+    });
   }
 
   Future<void> _loadModelPath() async {
     final db = ref.read(databaseProvider);
     final path = await db.getSetting('gemma_model_path');
+    if (!mounted) return;
     setState(() => _modelPath = path);
+  }
+
+  Future<void> _loadApiKey() async {
+    final db = ref.read(databaseProvider);
+    final key = await db.getSetting('openrouter_api_key');
+    if (!mounted) return;
+    _apiKeyCtrl.text = key ?? '';
+  }
+
+  Future<void> _saveApiKey() async {
+    final key = _apiKeyCtrl.text.trim();
+    await ref.read(databaseProvider).setSetting('openrouter_api_key', key);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('OpenRouter API key saved')),
+    );
   }
 
   Future<void> _pickModel() async {
@@ -73,7 +103,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('File too small (${srcSize} bytes) - not a valid model file'),
+            content: Text('File too small ($srcSize bytes) - not a valid model file'),
             backgroundColor: Colors.red,
           ),
         );
@@ -83,7 +113,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     setState(() {
       _loadingModel = true;
-      _loadingStatus = 'Copying model (${(srcSize / 1024 / 1024).toStringAsFixed(0)} MB)�';
+      _loadingStatus = 'Copying model (${(srcSize / 1024 / 1024).toStringAsFixed(0)} MB)...';
     });
 
     final String destPath;
@@ -106,7 +136,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
 
-    setState(() => _loadingStatus = 'Loading model into memory�');
+    setState(() => _loadingStatus = 'Loading model into memory...');
     final db = ref.read(databaseProvider);
     await db.setSetting('gemma_model_path', destPath);
     await ref.read(gemmaServiceProvider.notifier).loadModel(destPath);
@@ -121,9 +151,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final state = ref.read(gemmaServiceProvider);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(state.isLoaded
-              ? 'AI model loaded successfully'
-              : 'Failed to load model: ${state.error ?? 'Unknown error'}'),
+          content: Text(
+            state.isLoaded
+                ? 'AI model loaded successfully'
+                : 'Failed to load model: ${state.error ?? 'Unknown error'}',
+          ),
           backgroundColor: state.isLoaded ? Colors.green : Colors.red,
           duration: const Duration(seconds: 6),
         ),
@@ -132,7 +164,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _exportPackage() async {
-    setState(() => _loadingStatus = 'Exporting…');
+    setState(() => _loadingStatus = 'Exporting...');
     try {
       final path = await AtlasPackageService.exportPackage();
       await SharePlus.instance.share(
@@ -145,7 +177,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         );
       }
     } finally {
-      setState(() => _loadingStatus = '');
+      if (mounted) {
+        setState(() => _loadingStatus = '');
+      }
     }
   }
 
@@ -154,7 +188,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (result == null || result.files.isEmpty) return;
     final path = result.files.first.path;
     if (path == null) return;
-    setState(() => _loadingStatus = 'Importing…');
+    setState(() => _loadingStatus = 'Importing...');
     try {
       await AtlasPackageService.importPackage(path);
       if (mounted) {
@@ -170,7 +204,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         );
       }
     } finally {
-      setState(() => _loadingStatus = '');
+      if (mounted) {
+        setState(() => _loadingStatus = '');
+      }
     }
   }
 
@@ -187,11 +223,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       builder: (_) => AlertDialog(
         title: const Text('Clear All Data?'),
         content: const Text(
-            'This will permanently delete ALL entities, events, patterns, and statistics. This cannot be undone.'),
+          'This will permanently delete ALL entities, events, patterns, and statistics. This cannot be undone.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
@@ -205,8 +243,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final db = ref.read(databaseProvider);
     final entities = await db.getAllEntities();
     final events = await db.getAllEvents();
-    for (final e in entities) { await db.deleteEntity(e.id); }
-    for (final e in events) { await db.deleteEvent(e.id); }
+    for (final e in entities) {
+      await db.deleteEntity(e.id);
+    }
+    for (final e in events) {
+      await db.deleteEvent(e.id);
+    }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -234,14 +276,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             trailing: SegmentedButton<ThemeMode>(
               segments: const [
                 ButtonSegment(
-                    value: ThemeMode.light,
-                    icon: Icon(Icons.light_mode, size: 16)),
+                  value: ThemeMode.light,
+                  icon: Icon(Icons.light_mode, size: 16),
+                ),
                 ButtonSegment(
-                    value: ThemeMode.system,
-                    icon: Icon(Icons.brightness_auto, size: 16)),
+                  value: ThemeMode.system,
+                  icon: Icon(Icons.brightness_auto, size: 16),
+                ),
                 ButtonSegment(
-                    value: ThemeMode.dark,
-                    icon: Icon(Icons.dark_mode, size: 16)),
+                  value: ThemeMode.dark,
+                  icon: Icon(Icons.dark_mode, size: 16),
+                ),
               ],
               selected: {themeMode},
               onSelectionChanged: (s) =>
@@ -257,20 +302,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             subtitle: Text(
               _modelPath ?? 'No model loaded',
               style: TextStyle(
-                  fontSize: 12,
-                  color: _modelPath != null ? Colors.green : Colors.orange),
+                fontSize: 12,
+                color: _modelPath != null ? Colors.green : Colors.orange,
+              ),
             ),
             trailing: _loadingModel
                 ? Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2)),
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
                       if (_loadingStatus.isNotEmpty)
-                        Text(_loadingStatus,
-                            style: const TextStyle(fontSize: 9)),
+                        Text(
+                          _loadingStatus,
+                          style: const TextStyle(fontSize: 9),
+                        ),
                     ],
                   )
                 : TextButton(
@@ -283,8 +332,44 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: Text(
               'Select a Gemma .task or .bin model file to enable full AI reasoning.',
               style: TextStyle(
-                  fontSize: 12,
-                  color: scheme.onSurface.withOpacity(0.5)),
+                fontSize: 12,
+                color: scheme.onSurface.withOpacity(0.5),
+              ),
+            ),
+          ),
+
+          // OpenRouter API
+          _SectionTitle(title: 'OpenRouter API'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: TextField(
+              controller: _apiKeyCtrl,
+              obscureText: !_showApiKey,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: InputDecoration(
+                labelText: 'OpenRouter API Key',
+                helperText: 'Get your free key at openrouter.ai',
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: _showApiKey ? 'Hide key' : 'Show key',
+                      icon: Icon(
+                        _showApiKey ? Icons.visibility_off : Icons.visibility,
+                      ),
+                      onPressed: () =>
+                          setState(() => _showApiKey = !_showApiKey),
+                    ),
+                    IconButton(
+                      tooltip: 'Save key',
+                      icon: const Icon(Icons.save_outlined),
+                      onPressed: _saveApiKey,
+                    ),
+                  ],
+                ),
+              ),
+              onSubmitted: (_) => _saveApiKey(),
             ),
           ),
 
@@ -317,8 +402,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             leading: const Icon(Icons.upload_outlined),
             title: const Text('Export Package'),
             subtitle: const Text('Compress & share your .atlas package'),
-            trailing: _loadingStatus == 'Exporting…'
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+            trailing: _loadingStatus == 'Exporting...'
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Icon(Icons.chevron_right),
             onTap: _exportPackage,
           ),
@@ -326,8 +415,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             leading: const Icon(Icons.download_outlined),
             title: const Text('Import Package'),
             subtitle: const Text('Restore from a .atlas file'),
-            trailing: _loadingStatus == 'Importing…'
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+            trailing: _loadingStatus == 'Importing...'
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Icon(Icons.chevron_right),
             onTap: _importPackage,
           ),
@@ -343,8 +436,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _SectionTitle(title: 'Data'),
           ListTile(
             leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
-            title: const Text('Clear All Data',
-                style: TextStyle(color: Colors.red)),
+            title: const Text(
+              'Clear All Data',
+              style: TextStyle(color: Colors.red),
+            ),
             subtitle: const Text('Permanently delete everything'),
             onTap: _clearAllData,
           ),
@@ -359,7 +454,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const ListTile(
             leading: Icon(Icons.lock_outline),
             title: Text('Privacy'),
-            subtitle: Text('All data is stored locally on your device. Nothing is sent to any server.'),
+            subtitle: Text(
+              'All data is stored locally on your device. Nothing is sent to any server.',
+            ),
           ),
           const SizedBox(height: 32),
         ],
@@ -389,11 +486,3 @@ class _SectionTitle extends StatelessWidget {
     );
   }
 }
-
-
-
-
-
-
-
-

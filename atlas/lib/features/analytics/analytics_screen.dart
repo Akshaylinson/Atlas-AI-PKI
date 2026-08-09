@@ -303,12 +303,21 @@ class _AnalyticsSettingsScreenState
   String _loadingStatus = '';
   Map<String, dynamic> _packageMeta = {};
   String? _packageDir;
+  final _apiKeyCtrl = TextEditingController();
+  bool _showApiKey = false;
 
   @override
   void initState() {
     super.initState();
     _loadModelPath();
+    _loadApiKey();
     _loadPackageInfo();
+  }
+
+  @override
+  void dispose() {
+    _apiKeyCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadPackageInfo() async {
@@ -326,6 +335,22 @@ class _AnalyticsSettingsScreenState
     final path = await db.getSetting('gemma_model_path');
     if (!mounted) return;
     setState(() => _modelPath = path);
+  }
+
+  Future<void> _loadApiKey() async {
+    final db = ref.read(databaseProvider);
+    final key = await db.getSetting('openrouter_api_key');
+    if (!mounted) return;
+    _apiKeyCtrl.text = key ?? '';
+  }
+
+  Future<void> _saveApiKey() async {
+    final key = _apiKeyCtrl.text.trim();
+    await ref.read(databaseProvider).setSetting('openrouter_api_key', key);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('OpenRouter API key saved')),
+    );
   }
 
   Future<void> _pickModel() async {
@@ -579,6 +604,38 @@ class _AnalyticsSettingsScreenState
                 fontSize: 12,
                 color: scheme.onSurface.withValues(alpha: 0.5),
               ),
+            ),
+          ),
+          const _SettingsSectionTitle(title: 'OpenRouter API'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: TextField(
+              controller: _apiKeyCtrl,
+              obscureText: !_showApiKey,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: InputDecoration(
+                labelText: 'OpenRouter API Key',
+                helperText: 'Get your free key at openrouter.ai',
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: _showApiKey ? 'Hide key' : 'Show key',
+                      icon: Icon(
+                        _showApiKey ? Icons.visibility_off : Icons.visibility,
+                      ),
+                      onPressed: () => setState(() => _showApiKey = !_showApiKey),
+                    ),
+                    IconButton(
+                      tooltip: 'Save key',
+                      icon: const Icon(Icons.save_outlined),
+                      onPressed: _saveApiKey,
+                    ),
+                  ],
+                ),
+              ),
+              onSubmitted: (_) => _saveApiKey(),
             ),
           ),
           const _SettingsSectionTitle(title: 'Search'),

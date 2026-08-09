@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers/providers.dart';
 import '../../shared/utils/utils.dart';
@@ -58,7 +58,7 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
         title: const Text('AI Assistant',
             style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
-          _ModelStatusChip(),
+          const _ModelToggle(),
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: 'New Chat',
@@ -110,10 +110,10 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
           children: [
             Text('Atlas answers from your local knowledge base.'),
             SizedBox(height: 8),
-            Text('• All processing happens on-device'),
-            Text('• No data leaves your phone'),
-            Text('• AI only reasons over your recorded evidence'),
-            Text('• AI never invents statistics'),
+            Text('â€¢ All processing happens on-device'),
+            Text('â€¢ No data leaves your phone'),
+            Text('â€¢ AI only reasons over your recorded evidence'),
+            Text('â€¢ AI never invents statistics'),
             SizedBox(height: 12),
             Text('To enable full AI: place a Gemma GGUF model file in the app\'s models folder and configure the path in Settings.',
                 style: TextStyle(fontSize: 12)),
@@ -233,55 +233,55 @@ class _ChatComposer extends StatelessWidget {
   }
 }
 
-// Persistent AppBar chip showing AI model status at all times
-class _ModelStatusChip extends ConsumerWidget {
+// Persistent AppBar toggle for switching between KB-only and API-assisted AI.
+class _ModelToggle extends ConsumerWidget {
+  const _ModelToggle();
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(gemmaServiceProvider);
+    final mode = ref.watch(aiModeProvider);
 
     final Color color;
     final Widget icon;
     final String label;
 
-    if (state.isLoaded) {
+    if (mode == AiMode.api) {
       color = Colors.green;
-      icon = const Icon(Icons.check_circle, size: 13, color: Colors.green);
-      label = 'KB ready';
-    } else if (state.isLoading) {
-      color = Colors.blue;
-      icon = const SizedBox(
-        width: 11,
-        height: 11,
-        child: CircularProgressIndicator(strokeWidth: 1.8, color: Colors.blue),
-      );
-      label = 'Loading…';
+      icon = const Icon(Icons.cloud_done_outlined, size: 13, color: Colors.green);
+      label = 'API on';
     } else {
       color = Colors.orange;
-      icon = const Icon(Icons.info_outline, size: 13, color: Colors.orange);
-      label = 'KB chat';
+      icon = const Icon(Icons.cloud_off_outlined, size: 13, color: Colors.orange);
+      label = 'AI off';
     }
 
     return Padding(
       padding: const EdgeInsets.only(right: 4),
       child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withOpacity(0.4)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              icon,
-              const SizedBox(width: 4),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: color,
-                      fontWeight: FontWeight.w600)),
-            ],
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => ref.read(aiModeProvider.notifier).set(
+                mode == AiMode.api ? AiMode.off : AiMode.api,
+              ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: color.withOpacity(0.4)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                icon,
+                const SizedBox(width: 4),
+                Text(label,
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: color,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
           ),
         ),
       ),
@@ -576,3 +576,4 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
     );
   }
 }
+
