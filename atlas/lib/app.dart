@@ -5,6 +5,7 @@ import 'core/providers/providers.dart';
 import 'features/shell/main_shell.dart';
 import 'features/package/package_setup_screen.dart';
 import 'core/services/atlas_package_service.dart';
+import 'splash_screen.dart';
 
 class AtlasApp extends ConsumerWidget {
   const AtlasApp({super.key});
@@ -31,31 +32,25 @@ class _StartupRouter extends StatefulWidget {
 }
 
 class _StartupRouterState extends State<_StartupRouter> {
-  bool _checking = true;
+  bool _splashDone = false;
   bool _hasPackage = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _check();
-  }
-
+  // _check is passed as onReady callback to AtlasSplashScreen,
+  // which calls it after its stage animations complete.
   Future<void> _check() async {
     final dir = await AtlasPackageService.getActivePackageDir();
+    if (!mounted) return;
     setState(() {
       _hasPackage = dir != null;
-      _checking = false;
+      _splashDone = true;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_checking) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+    if (!_splashDone) {
+      return AtlasSplashScreen(onReady: _check);
     }
     return _hasPackage ? const MainShell() : const PackageSetupScreen();
   }
 }
-
