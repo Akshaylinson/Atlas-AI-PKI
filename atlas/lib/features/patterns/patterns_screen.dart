@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'dart:convert';
 import '../../core/providers/providers.dart';
 import '../../core/database/app_database.dart';
@@ -57,10 +58,84 @@ class PatternsScreen extends ConsumerWidget {
                     ],
                   ),
                   const SizedBox(height: 16),
+                  _PatternFrequencyChart(patterns: patterns),
+                  const SizedBox(height: 16),
                   ...patterns.map((p) => _PatternCard(pattern: p)),
                 ],
               ),
       ),
+    );
+  }
+}
+
+class _PatternFrequencyChart extends StatelessWidget {
+  final List<Pattern> patterns;
+  const _PatternFrequencyChart({required this.patterns});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final typeCounts = <String, int>{};
+    for (final p in patterns) {
+      typeCounts[p.patternType] = (typeCounts[p.patternType] ?? 0) + 1;
+    }
+    final entries = typeCounts.entries.toList();
+    if (entries.isEmpty) return const SizedBox.shrink();
+
+    const typeColors = {
+      'association': Color(0xFF2563EB),
+      'sequential': Color(0xFF7C3AED),
+      'mood_trend': Color(0xFF16A34A),
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Pattern Types',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 140,
+          child: BarChart(BarChartData(
+            barGroups: entries.asMap().entries.map((e) {
+              final color = typeColors[e.value.key] ?? scheme.primary;
+              return BarChartGroupData(
+                x: e.key,
+                barRods: [
+                  BarChartRodData(
+                    toY: e.value.value.toDouble(),
+                    color: color,
+                    width: 28,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ],
+              );
+            }).toList(),
+            gridData: const FlGridData(show: false),
+            borderData: FlBorderData(show: false),
+            titlesData: FlTitlesData(
+              leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  getTitlesWidget: (v, _) {
+                    final i = v.toInt();
+                    if (i < 0 || i >= entries.length) return const SizedBox.shrink();
+                    final label = entries[i].key.replaceAll('_', ' ');
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(label,
+                          style: const TextStyle(fontSize: 9)),
+                    );
+                  },
+                ),
+              ),
+            ),
+          )),
+        ),
+      ],
     );
   }
 }

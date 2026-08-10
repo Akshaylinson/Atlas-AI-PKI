@@ -124,6 +124,17 @@ class AnalyticsScreen extends ConsumerWidget {
                         child: _ActivityBarChart(events: events),
                       ),
                       const SizedBox(height: 24),
+                      const SectionHeader(title: 'Activity Heatmap'),
+                      const SizedBox(height: 12),
+                      _HeatmapSection(events: events),
+                      const SizedBox(height: 24),
+                      const SectionHeader(title: 'Importance Trend'),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 140,
+                        child: _TrendLineChart(events: events),
+                      ),
+                      const SizedBox(height: 24),
                     ],
                   );
                 },
@@ -225,6 +236,93 @@ class _ActivityBarChart extends StatelessWidget {
             },
           ),
         ),
+      ),
+    ));
+  }
+}
+
+class _HeatmapSection extends StatelessWidget {
+  final List<Event> events;
+  const _HeatmapSection({required this.events});
+
+  @override
+  Widget build(BuildContext context) {
+    final counts = <String, int>{};
+    for (final e in events) {
+      final d = e.timestamp;
+      final key =
+          '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return ActivityHeatmap(dayCounts: counts, weeks: 16);
+  }
+}
+
+class _TrendLineChart extends StatelessWidget {
+  final List<Event> events;
+  const _TrendLineChart({required this.events});
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    // 30-day buckets: avg importance per day
+    final sums = List.filled(30, 0);
+    final cnts = List.filled(30, 0);
+    for (final e in events) {
+      final diff = now.difference(e.timestamp).inDays;
+      if (diff < 30) {
+        final idx = 29 - diff;
+        sums[idx] += e.importance;
+        cnts[idx]++;
+      }
+    }
+    final spots = <FlSpot>[];
+    for (var i = 0; i < 30; i++) {
+      if (cnts[i] > 0) spots.add(FlSpot(i.toDouble(), sums[i] / cnts[i]));
+    }
+    if (spots.length < 2) return const SizedBox.shrink();
+    final color = Theme.of(context).colorScheme.primary;
+    return LineChart(LineChartData(
+      minY: 1,
+      maxY: 5,
+      lineBarsData: [
+        LineChartBarData(
+          spots: spots,
+          isCurved: true,
+          color: color,
+          barWidth: 2,
+          dotData: const FlDotData(show: false),
+          belowBarData: BarAreaData(
+            show: true,
+            color: color.withValues(alpha: 0.08),
+          ),
+        ),
+      ],
+      gridData: FlGridData(
+        show: true,
+        drawVerticalLine: false,
+        horizontalInterval: 1,
+        getDrawingHorizontalLine: (_) => FlLine(
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
+          strokeWidth: 1,
+        ),
+      ),
+      borderData: FlBorderData(show: false),
+      titlesData: FlTitlesData(
+        leftTitles: AxisTitles(
+          sideTitles: SideTitles(
+            showTitles: true,
+            interval: 1,
+            reservedSize: 20,
+            getTitlesWidget: (v, _) => Text(
+              v.toInt().toString(),
+              style: const TextStyle(fontSize: 9),
+            ),
+          ),
+        ),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
     ));
   }

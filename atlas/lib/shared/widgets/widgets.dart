@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../utils/utils.dart';
@@ -56,28 +57,125 @@ class ConfidenceGauge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = confidence > 0.7
-        ? Colors.green
+        ? const Color(0xFF16A34A)
         : confidence > 0.4
-            ? Colors.orange
-            : Colors.red;
+            ? const Color(0xFFD97706)
+            : const Color(0xFFDC2626);
     return SizedBox(
       width: size,
-      height: size,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          CircularProgressIndicator(
-            value: confidence,
-            strokeWidth: 6,
-            backgroundColor: color.withOpacity(0.2),
-            valueColor: AlwaysStoppedAnimation(color),
-          ),
-          Text(
+      height: size * 0.65,
+      child: CustomPaint(
+        painter: _ArcGaugePainter(value: confidence, color: color),
+        child: Align(
+          alignment: const Alignment(0, 0.6),
+          child: Text(
             '${(confidence * 100).toStringAsFixed(0)}%',
             style: TextStyle(
-                fontSize: size * 0.2, fontWeight: FontWeight.bold, color: color),
+              fontSize: size * 0.18,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
           ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ArcGaugePainter extends CustomPainter {
+  final double value;
+  final Color color;
+  const _ArcGaugePainter({required this.value, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height * 0.9;
+    final r = size.width * 0.44;
+    const startAngle = math.pi;
+    const sweepAngle = math.pi;
+    final strokeW = size.width * 0.09;
+    final rect = Rect.fromCircle(center: Offset(cx, cy), radius: r);
+
+    canvas.drawArc(
+      rect, startAngle, sweepAngle, false,
+      Paint()
+        ..color = color.withOpacity(0.15)
+        ..strokeWidth = strokeW
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawArc(
+      rect, startAngle, sweepAngle * value.clamp(0.0, 1.0), false,
+      Paint()
+        ..color = color
+        ..strokeWidth = strokeW
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ArcGaugePainter old) => old.value != value || old.color != color;
+}
+
+// ── Activity Heatmap ──────────────────────────────────────────────────────────
+
+class ActivityHeatmap extends StatelessWidget {
+  /// Map of date string 'yyyy-MM-dd' → count
+  final Map<String, int> dayCounts;
+  /// Number of weeks to show (columns)
+  final int weeks;
+
+  const ActivityHeatmap({super.key, required this.dayCounts, this.weeks = 12});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final maxCount = dayCounts.values.fold(0, math.max);
+    final cellSize = 14.0;
+    final gap = 3.0;
+
+    // Build grid: weeks columns × 7 rows
+    final totalDays = weeks * 7;
+    final startDay = now.subtract(Duration(days: totalDays - 1));
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: List.generate(weeks, (w) {
+          return Padding(
+            padding: EdgeInsets.only(right: gap),
+            child: Column(
+              children: List.generate(7, (d) {
+                final day = startDay.add(Duration(days: w * 7 + d));
+                final key =
+                    '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+                final count = dayCounts[key] ?? 0;
+                final intensity = maxCount > 0 ? count / maxCount : 0.0;
+                final color = intensity == 0
+                    ? scheme.outline.withOpacity(0.2)
+                    : scheme.primary.withOpacity(0.15 + intensity * 0.85);
+                return Padding(
+                  padding: EdgeInsets.only(bottom: gap),
+                  child: Tooltip(
+                    message: '$key: $count',
+                    child: Container(
+                      width: cellSize,
+                      height: cellSize,
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          );
+        }),
       ),
     );
   }
