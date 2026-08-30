@@ -3,7 +3,7 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import 'package:mime/mime.dart';
 import '../models/models.dart';
-import '../services/atlas_package_service.dart';
+import 'atlas_package_service.dart';
 
 class FileStorageService {
   static const _uuid = Uuid();
@@ -18,24 +18,23 @@ class FileStorageService {
 
     final String baseDir;
     if (type == AttachmentType.audio) {
-      baseDir = await AtlasPackageService.getAudioDir();
+      baseDir = await AtlasPackageService.getAudioPath();
+    } else if (type == AttachmentType.video) {
+      baseDir = await AtlasPackageService.getVideoPath();
     } else {
-      final attachDir = await AtlasPackageService.getAttachmentsDir();
-      final subFolder = type == AttachmentType.image
-          ? 'images'
-          : type == AttachmentType.pdf || type == AttachmentType.document
-              ? 'documents'
-              : 'others';
-      baseDir = p.join(attachDir, subFolder);
+      baseDir = type == AttachmentType.image
+          ? await AtlasPackageService.getImagesPath()
+          : await AtlasPackageService.getDocumentsPath();
     }
 
     await Directory(baseDir).create(recursive: true);
     final destPath = p.join(baseDir, fileName);
     await sourceFile.copy(destPath);
+    final relativePath = await AtlasPackageService.relativePathOf(destPath);
 
     return Attachment(
       id: id,
-      path: destPath,
+      path: relativePath,
       type: type,
       name: customName ?? p.basename(sourceFile.path),
       sizeBytes: await sourceFile.length(),
@@ -43,11 +42,13 @@ class FileStorageService {
   }
 
   Future<void> deleteFile(String filePath) async {
-    final file = File(filePath);
+    final file = File(await AtlasPackageService.resolvePath(filePath));
     if (await file.exists()) await file.delete();
   }
 
-  Future<bool> fileExists(String filePath) => File(filePath).exists();
+  Future<bool> fileExists(String filePath) async {
+    return File(await AtlasPackageService.resolvePath(filePath)).exists();
+  }
 
   AttachmentType _typeFromMime(String mime) {
     if (mime.startsWith('image/')) return AttachmentType.image;

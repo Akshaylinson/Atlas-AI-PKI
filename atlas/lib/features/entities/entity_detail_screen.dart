@@ -1,13 +1,14 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:fl_chart/fl_chart.dart';
-import 'dart:convert';
-import 'package:open_filex/open_filex.dart';
-import '../../core/providers/providers.dart';
-import '../../core/database/app_database.dart';
-import '../../core/models/models.dart';
-import '../../shared/widgets/widgets.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'dart:convert';
+import 'package:open_filex/open_filex.dart';
+import '../../core/providers/providers.dart';
+import '../../core/database/app_database.dart';
+import '../../core/models/models.dart';
+import '../../core/services/atlas_storage.dart';
+import '../../shared/widgets/widgets.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/utils.dart';
 import '../camera/image_analysis_screen.dart';
@@ -45,10 +46,13 @@ class EntityDetailScreen extends ConsumerWidget {
               int.tryParse(s.replaceFirst('#', ''), radix: 16);
           return v != null ? Color(v) : scheme.primary;
         }
-        final color = parseColor(entity.color);
-        final tags = parseStringListJson(entity.tags);
-        final hasProfileImage = entity.profileImagePath != null &&
-            File(entity.profileImagePath!).existsSync();
+        final color = parseColor(entity.color);
+        final tags = parseStringListJson(entity.tags);
+        final hasProfileImage = entity.profileImagePath != null &&
+            File(AtlasStorage.resolvePathSync(entity.profileImagePath!)).existsSync();
+        final profileImagePath = hasProfileImage
+            ? AtlasStorage.resolvePathSync(entity.profileImagePath!)
+            : null;
 
         return Scaffold(
           appBar: AppBar(
@@ -97,13 +101,12 @@ class EntityDetailScreen extends ConsumerWidget {
                               decoration: BoxDecoration(
                                 color: color.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(16),
-                                image: hasProfileImage
-                                    ? DecorationImage(
-                                        image: FileImage(
-                                            File(entity.profileImagePath!)),
-                                        fit: BoxFit.cover,
-                                      )
-                                    : null,
+                                image: hasProfileImage
+                                    ? DecorationImage(
+                                        image: FileImage(File(profileImagePath!)),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null,
                               ),
                               child: !hasProfileImage
                                   ? Center(
@@ -772,16 +775,16 @@ class _GalleryTab extends StatelessWidget {
             items.add(_GalleryItem(
                 attachment: att, eventDate: event.timestamp));
           }
-          if (event.voiceNotePath != null) {
-            items.add(_GalleryItem(
-              attachment: Attachment(
-                id: 'voice_${event.id}',
-                path: event.voiceNotePath!,
-                type: AttachmentType.audio,
-                name: 'Voice note',
-              ),
-              eventDate: event.timestamp,
-            ));
+          if (event.voiceNotePath != null) {
+            items.add(_GalleryItem(
+              attachment: Attachment(
+                id: 'voice_${event.id}',
+                path: event.voiceNotePath!,
+                type: AttachmentType.audio,
+                name: 'Voice note',
+              ),
+              eventDate: event.timestamp,
+            ));
           }
         }
         // Sort newest first
@@ -820,20 +823,21 @@ class _GalleryCell extends StatelessWidget {
     final att = item.attachment;
     final scheme = Theme.of(context).colorScheme;
 
-    if (att.type == AttachmentType.image) {
-      return GestureDetector(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ImageAnalysisScreen(imagePath: att.path),
-          ),
-        ),
-        child: Image.file(File(att.path),
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _PlaceholderCell(
-                icon: Icons.broken_image_outlined, scheme: scheme)),
-      );
-    }
+    if (att.type == AttachmentType.image) {
+      final resolvedPath = AtlasStorage.resolvePathSync(att.path);
+      return GestureDetector(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ImageAnalysisScreen(imagePath: resolvedPath),
+          ),
+        ),
+        child: Image.file(File(resolvedPath),
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _PlaceholderCell(
+                icon: Icons.broken_image_outlined, scheme: scheme)),
+      );
+    }
 
     // Non-image: show icon tile, tap to open
     IconData icon;
@@ -854,12 +858,12 @@ class _GalleryCell extends StatelessWidget {
       default:
         icon = Icons.insert_drive_file;
         iconColor = scheme.primary;
-    }
-
-    return GestureDetector(
-      onTap: () => OpenFilex.open(att.path),
-      child: _PlaceholderCell(
-        icon: icon,
+    }
+
+    return GestureDetector(
+      onTap: () => OpenFilex.open(AtlasStorage.resolvePathSync(att.path)),
+      child: _PlaceholderCell(
+        icon: icon,
         iconColor: iconColor,
         label: att.name,
         scheme: scheme,

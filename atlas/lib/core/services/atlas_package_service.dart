@@ -1,66 +1,62 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:archive/archive_io.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-const _prefKey = 'atlas_package_dir';
+import 'package:archive/archive_io.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
+
+import 'atlas_storage.dart';
+
 const packageExt = '.atlas';
 
-/// The Atlas Package is a portable directory containing:
-///   atlas.db, attachments/, audio/, models/, vectors/, settings.json, meta.json
-///
-/// It can be zipped into a single .atlas file for sharing/backup/restore.
 class AtlasPackageService {
+  static final _uuid = const Uuid();
+
   // ── Active package ────────────────────────────────────────────────────────
 
-  static Future<String?> getActivePackageDir() async {
-    final prefs = await SharedPreferences.getInstance();
-    final dir = prefs.getString(_prefKey);
-    if (dir != null && Directory(dir).existsSync()) return dir;
-    return null;
-  }
+  static Future<String?> getActivePackageDir() =>
+      AtlasStorage.getActivePackageDir();
 
   static Future<void> setActivePackageDir(String dir) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefKey, dir);
+    await AtlasStorage.ensurePackageStructure(dir);
+    await AtlasStorage.setActivePackageDir(dir);
   }
 
-  static Future<String> getActiveDatabasePath() async {
-    final dir = await getActivePackageDir();
-    if (dir == null) throw StateError('No active Atlas package');
-    return p.join(dir, 'atlas.db');
-  }
+  static Future<String> getActiveDatabasePath() => AtlasStorage.getDatabasePath();
 
-  static Future<String> getAttachmentsDir() async {
-    final dir = await _requirePackageDir();
-    final d = Directory(p.join(dir, 'attachments'));
-    await d.create(recursive: true);
-    return d.path;
-  }
+  static Future<String> getDatabasePath() => AtlasStorage.getDatabasePath();
+  static Future<String> getEmbeddingsPath() => AtlasStorage.getEmbeddingsPath();
+  static Future<String> getKnowledgeGraphPath() => AtlasStorage.getKnowledgeGraphPath();
+  static Future<String> getPatternsPath() => AtlasStorage.getPatternsPath();
+  static Future<String> getAnalyticsPath() => AtlasStorage.getAnalyticsPath();
+  static Future<String> getFilesPath() => AtlasStorage.getFilesPath();
+  static Future<String> getImagesPath() => AtlasStorage.getImagesPath();
+  static Future<String> getAudioPath() => AtlasStorage.getAudioPath();
+  static Future<String> getDocumentsPath() => AtlasStorage.getDocumentsPath();
+  static Future<String> getModelsPath() => AtlasStorage.getModelsPath();
+  static Future<String> getConfigPath() => AtlasStorage.getConfigPath();
+  static Future<String> getCachePath() => AtlasStorage.getCachePath();
+  static Future<String> getLogsPath() => AtlasStorage.getLogsPath();
 
-  static Future<String> getAudioDir() async {
-    final dir = await _requirePackageDir();
-    final d = Directory(p.join(dir, 'audio'));
-    await d.create(recursive: true);
-    return d.path;
-  }
+  static Future<String> resolvePath(String path) => AtlasStorage.resolvePath(path);
 
-  static Future<String> getModelsDir() async {
-    final dir = await _requirePackageDir();
-    final d = Directory(p.join(dir, 'models'));
-    await d.create(recursive: true);
-    return d.path;
-  }
+  static Future<String> relativePathOf(String path) => AtlasStorage.relativePathOf(path);
+
+  static Future<void> beginSession() => AtlasStorage.beginSession();
+
+  static Future<void> endSession() => AtlasStorage.endSession();
+
+  // ── Model handling ────────────────────────────────────────────────────────
 
   /// Copies a model file into the active package's models/ directory.
-  /// Returns the destination path.
+  /// Returns a package-relative path.
   static Future<String> installModelFile(String sourcePath) async {
-    final modelsDir = await getModelsDir();
+    final modelsDir = await getModelsPath();
     final dest = p.join(modelsDir, p.basename(sourcePath));
     await File(sourcePath).copy(dest);
-    return dest;
+    return AtlasStorage.relativePathOf(dest);
   }
 
   // ── Create ────────────────────────────────────────────────────────────────
@@ -70,27 +66,29 @@ class AtlasPackageService {
     final packagesRoot = Directory(p.join(appDir.path, 'atlas_packages'));
     await packagesRoot.create(recursive: true);
 
-    final safeName = name.replaceAll(RegExp(r'[^\w\-]'), '_').trim();
-    final packageDir = Directory(p.join(packagesRoot.path, safeName));
+    final safeName = name
+        .trim()
+        .replaceAll(RegExp(r'[^\w\-]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_');
+    final packageId = safeName.isEmpty
+        ? 'atlas_${DateTime.now().millisecondsSinceEpoch}'
+        : safeName;
+
+    final packageDir = Directory(p.join(packagesRoot.path, packageId));
     await packageDir.create(recursive: true);
+    await AtlasStorage.ensurePackageStructure(packageDir.path);
 
-    for (final sub in [
-      'attachments/images',
-      'attachments/documents',
-      'attachments/others',
-      'audio',
-      'models',
-      'vectors',
-      'patterns',
-    ]) {
-      await Directory(p.join(packageDir.path, sub)).create(recursive: true);
-    }
+    final now = DateTime.now();
+    final manifest = AtlasPackageManifest.fresh(
+      packageId: packageId,
+      timestamp: now,
+    );
+    await AtlasStorage.writeManifest(packageDir.path, manifest);
 
-    await _writeMeta(packageDir.path, name);
-    await File(p.join(packageDir.path, 'settings.json'))
-        .writeAsString(jsonEncode({}));
-
-    await setActivePackageDir(packageDir.path);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('atlas_package_dir', packageDir.path);
+    await AtlasStorage.setActivePackageDir(packageDir.path);
+    await beginSession();
     return packageDir.path;
   }
 
@@ -102,11 +100,15 @@ class AtlasPackageService {
     final packagesRoot = Directory(p.join(appDir.path, 'atlas_packages'));
     await packagesRoot.create(recursive: true);
 
+    late final Directory packageDir;
     if (sourcePath.endsWith(packageExt)) {
       final bytes = await File(sourcePath).readAsBytes();
       final archive = ZipDecoder().decodeBytes(bytes);
-      final name = p.basenameWithoutExtension(sourcePath);
-      final packageDir = Directory(p.join(packagesRoot.path, name));
+      final packageName = p.basenameWithoutExtension(sourcePath).trim();
+      final safeName = packageName.isEmpty
+          ? 'atlas_${DateTime.now().millisecondsSinceEpoch}'
+          : packageName.replaceAll(RegExp(r'[^\w\-]+'), '_');
+      packageDir = Directory(p.join(packagesRoot.path, safeName));
       await packageDir.create(recursive: true);
 
       for (final file in archive) {
@@ -119,16 +121,46 @@ class AtlasPackageService {
           await Directory(filePath).create(recursive: true);
         }
       }
-      await setActivePackageDir(packageDir.path);
-      return packageDir.path;
     } else {
-      // Directory — copy into private storage
-      final name = p.basename(sourcePath);
-      final packageDir = Directory(p.join(packagesRoot.path, name));
-      await _copyDir(Directory(sourcePath), packageDir);
-      await setActivePackageDir(packageDir.path);
-      return packageDir.path;
+      final incoming = Directory(sourcePath);
+      final sourceManifest = File(p.join(sourcePath, kAtlasManifestFileName));
+      final safeName = sourceManifest.existsSync()
+          ? p.basename(sourcePath)
+          : 'atlas_${_uuid.v4()}';
+      packageDir = Directory(p.join(packagesRoot.path, safeName));
+      await packageDir.create(recursive: true);
+      await _copyDir(incoming, packageDir);
     }
+
+    await AtlasStorage.ensurePackageStructure(packageDir.path);
+
+    final manifest = await AtlasStorage.readManifest(packageDir.path) ??
+        AtlasPackageManifest.fresh(
+          packageId: p.basename(packageDir.path),
+          timestamp: DateTime.now(),
+        );
+    await AtlasStorage.writeManifest(
+      packageDir.path,
+      AtlasPackageManifest(
+        atlasVersion: manifest.atlasVersion,
+        packageId: manifest.packageId.isEmpty
+            ? p.basename(packageDir.path)
+            : manifest.packageId,
+        packageType: manifest.packageType,
+        createdAt: manifest.createdAt,
+        updatedAt: DateTime.now(),
+        schemaVersion: manifest.schemaVersion,
+        minimumRuntimeVersion: manifest.minimumRuntimeVersion,
+        memory: manifest.memory,
+        data: manifest.data,
+        models: manifest.models,
+        configuration: manifest.configuration,
+      ),
+    );
+
+    await AtlasStorage.setActivePackageDir(packageDir.path);
+    await beginSession();
+    return packageDir.path;
   }
 
   // ── Export ────────────────────────────────────────────────────────────────
@@ -137,13 +169,18 @@ class AtlasPackageService {
     final packageDir = await getActivePackageDir();
     if (packageDir == null) throw StateError('No active package');
 
-    final meta = await _readMeta(packageDir);
-    final name = (meta['name'] as String? ?? 'MyLife')
-        .replaceAll(RegExp(r'[^\w\s\-]'), '')
-        .trim();
+    final manifest = await AtlasStorage.readManifest(packageDir) ??
+        AtlasPackageManifest.fresh(
+          packageId: p.basename(packageDir),
+          timestamp: DateTime.now(),
+        );
+    final safeName = manifest.packageId
+        .replaceAll(RegExp(r'[^\w\s\-]+'), '')
+        .trim()
+        .replaceAll(RegExp(r'\s+'), '_');
 
-    final docsDir = await getApplicationDocumentsDirectory();
-    final outPath = p.join(docsDir.path, '$name$packageExt');
+    final appDir = await getApplicationDocumentsDirectory();
+    final outPath = p.join(appDir.path, '$safeName$packageExt');
 
     final encoder = ZipFileEncoder();
     encoder.create(outPath);
@@ -158,37 +195,30 @@ class AtlasPackageService {
   static Future<Map<String, dynamic>> getPackageMeta() async {
     final dir = await getActivePackageDir();
     if (dir == null) return {};
-    return _readMeta(dir);
+    final manifest = await AtlasStorage.readManifest(dir);
+    return manifest?.toJson() ?? {};
   }
+
+  static Future<AtlasPackageValidationResult> validateActivePackage() async {
+    final dir = await getActivePackageDir();
+    if (dir == null) {
+      return const AtlasPackageValidationResult(
+        isValid: false,
+        issues: ['No active Atlas package'],
+        manifest: null,
+      );
+    }
+    return AtlasStorage.validatePackage(dir);
+  }
+
+  static Future<AtlasSessionState?> getSessionState() =>
+      AtlasStorage.readSessionState();
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  static Future<String> _requirePackageDir() async {
-    final dir = await getActivePackageDir();
-    if (dir == null) throw StateError('No active Atlas package');
-    return dir;
-  }
-
-  static Future<void> _writeMeta(String packageDir, String name) async {
-    final meta = {
-      'name': name,
-      'version': '1.0.0',
-      'created': DateTime.now().toIso8601String(),
-      'appVersion': '1.0.0',
-    };
-    await File(p.join(packageDir, 'meta.json'))
-        .writeAsString(jsonEncode(meta));
-  }
-
-  static Future<Map<String, dynamic>> _readMeta(String packageDir) async {
-    final f = File(p.join(packageDir, 'meta.json'));
-    if (!f.existsSync()) return {};
-    return jsonDecode(await f.readAsString()) as Map<String, dynamic>;
-  }
-
   static Future<void> _copyDir(Directory src, Directory dest) async {
     await dest.create(recursive: true);
-    await for (final entity in src.list()) {
+    await for (final entity in src.list(recursive: false, followLinks: false)) {
       final destPath = p.join(dest.path, p.basename(entity.path));
       if (entity is Directory) {
         await _copyDir(entity, Directory(destPath));

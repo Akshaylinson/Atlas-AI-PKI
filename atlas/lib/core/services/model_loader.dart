@@ -7,7 +7,7 @@ import 'package:flutter_gemma/core/message.dart';
 import 'package:flutter_gemma/core/model.dart';
 import 'package:flutter_gemma/pigeon.g.dart';
 
-const supportedGemmaModelExtensions = <String>{'.task', '.bin'};
+const supportedGemmaModelExtensions = <String>{'.task', '.bin', '.gguf'};
 
 class ModelLoader {
   bool _loading = false;
@@ -26,7 +26,7 @@ class ModelLoader {
       final lowerPath = modelPath.toLowerCase();
       if (!supportedGemmaModelExtensions.any(lowerPath.endsWith)) {
         throw ArgumentError(
-          'Unsupported model format. Use a .task or .bin file.',
+          'Unsupported model format. Use a .gguf, .task, or .bin file.',
         );
       }
 

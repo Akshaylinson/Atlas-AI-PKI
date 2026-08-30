@@ -8,6 +8,7 @@ import '../events/event_form_screen.dart';
 import '../ai_chat/ai_chat_screen.dart';
 import '../decisions/decisions_screen.dart';
 import '../../core/providers/providers.dart';
+import '../../core/services/atlas_package_service.dart';
 
 final _navIndexProvider = StateProvider<int>((ref) => 0);
 
@@ -25,6 +26,12 @@ class _MainShellState extends ConsumerState<MainShell> {
   void initState() {
     super.initState();
     _loadedScreens[0] = const AnalyticsScreen();
+  }
+
+  @override
+  void dispose() {
+    AtlasPackageService.endSession();
+    super.dispose();
   }
 
   Widget _screenFor(int index) {

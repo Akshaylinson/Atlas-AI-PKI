@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:convert';
 import '../../core/providers/providers.dart';
 import '../../core/database/app_database.dart';
+import '../../core/services/atlas_storage.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/utils/utils.dart';
 import 'entity_form_screen.dart';
@@ -91,7 +92,10 @@ class _EntityCard extends ConsumerWidget {
     final color = _parseEntityColor(entity.color, scheme.primary);
     final initial = entity.name.isNotEmpty ? entity.name[0].toUpperCase() : '?';
     final hasProfileImage = entity.profileImagePath != null &&
-        File(entity.profileImagePath!).existsSync();
+        File(AtlasStorage.resolvePathSync(entity.profileImagePath!)).existsSync();
+    final profileImagePath = hasProfileImage
+        ? AtlasStorage.resolvePathSync(entity.profileImagePath!)
+        : null;
 
     return InkWell(
       borderRadius: BorderRadius.circular(16),
@@ -116,7 +120,7 @@ class _EntityCard extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(12),
                 image: hasProfileImage
                     ? DecorationImage(
-                        image: FileImage(File(entity.profileImagePath!)),
+                        image: FileImage(File(profileImagePath!)),
                         fit: BoxFit.cover,
                       )
                     : null,

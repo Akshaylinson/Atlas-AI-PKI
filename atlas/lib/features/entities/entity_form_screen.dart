@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import 'dart:convert';
 import '../../core/database/app_database.dart';
 import '../../core/providers/providers.dart';
+import '../../core/services/atlas_storage.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/utils/utils.dart';
 import 'package:drift/drift.dart' show Value;
@@ -200,8 +201,8 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
                       radius: 48,
                       backgroundColor: _color.withOpacity(0.2),
                       backgroundImage: _profileImagePath != null &&
-                          File(_profileImagePath!).existsSync()
-                          ? FileImage(File(_profileImagePath!))
+                          File(AtlasStorage.resolvePathSync(_profileImagePath!)).existsSync()
+                          ? FileImage(File(AtlasStorage.resolvePathSync(_profileImagePath!)))
                           : null,
                       child: _profileImagePath == null
                           ? Text(
@@ -511,7 +512,9 @@ class _EntityFormScreenState extends ConsumerState<EntityFormScreen> {
     final picker = ImagePicker();
     final picked =
         await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
-    if (picked != null) setState(() => _profileImagePath = picked.path);
+    if (picked != null) {
+      setState(() => _profileImagePath = AtlasStorage.relativePathOfSync(picked.path));
+    }
   }
 
   Future<void> _pickColor() async {

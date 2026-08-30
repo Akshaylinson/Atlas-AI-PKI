@@ -7,6 +7,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:photo_view/photo_view.dart';
 import '../../core/providers/providers.dart';
 import '../../core/models/models.dart';
+import '../../core/services/atlas_storage.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/utils.dart';
@@ -36,7 +37,7 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
       await _player.stop();
       setState(() => _isPlaying = false);
     } else {
-      await _player.setFilePath(path);
+      await _player.setFilePath(AtlasStorage.resolvePathSync(path));
       _player.play();
       setState(() => _isPlaying = true);
       _player.playerStateStream.listen((state) {
@@ -366,24 +367,25 @@ class _AttachmentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (attachment.type == AttachmentType.image) {
+      final resolvedPath = AtlasStorage.resolvePathSync(attachment.path);
       return GestureDetector(
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => Scaffold(
               appBar: AppBar(),
-              body: PhotoView(imageProvider: FileImage(File(attachment.path))),
+              body: PhotoView(imageProvider: FileImage(File(resolvedPath))),
             ),
           ),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: Image.file(File(attachment.path), fit: BoxFit.cover),
+          child: Image.file(File(resolvedPath), fit: BoxFit.cover),
         ),
       );
     }
     return GestureDetector(
-      onTap: () => OpenFilex.open(attachment.path),
+      onTap: () => OpenFilex.open(AtlasStorage.resolvePathSync(attachment.path)),
       child: Container(
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,

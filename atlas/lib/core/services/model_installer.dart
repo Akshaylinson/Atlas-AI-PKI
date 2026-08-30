@@ -6,7 +6,7 @@ class ModelInstaller {
   /// package's models/ directory, otherwise null.
   Future<String?> ensureInstalled() async {
     try {
-      final modelsDir = await AtlasPackageService.getModelsDir();
+      final modelsDir = await AtlasPackageService.getModelsPath();
       final dir = Directory(modelsDir);
       if (!dir.existsSync()) return null;
 
@@ -19,13 +19,11 @@ class ModelInstaller {
           .toList();
 
       if (models.isEmpty) return null;
-      return models.first.path;
+      return await AtlasPackageService.relativePathOf(models.first.path);
     } catch (_) {
       return null;
     }
   }
 }
-
-
 
 

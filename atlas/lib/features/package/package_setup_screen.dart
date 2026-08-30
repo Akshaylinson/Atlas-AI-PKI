@@ -5,7 +5,11 @@ import '../../core/services/atlas_package_service.dart';
 import '../shell/main_shell.dart';
 
 class PackageSetupScreen extends StatefulWidget {
+  final String? bootIssue;
+
   const PackageSetupScreen({super.key});
+  const PackageSetupScreen.withIssue({super.key, this.bootIssue})
+      : assert(true);
 
   @override
   State<PackageSetupScreen> createState() => _PackageSetupScreenState();
@@ -98,6 +102,25 @@ class _PackageSetupScreenState extends State<PackageSetupScreen> {
                         color: scheme.onSurface.withValues(alpha: 0.6)),
                     textAlign: TextAlign.center,
                   ),
+                  if (widget.bootIssue != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: scheme.errorContainer.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: scheme.error.withValues(alpha: 0.2)),
+                      ),
+                      child: Text(
+                        widget.bootIssue!,
+                        style: TextStyle(
+                          color: scheme.onErrorContainer,
+                          fontSize: 12,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 48),
 
                   // Create new

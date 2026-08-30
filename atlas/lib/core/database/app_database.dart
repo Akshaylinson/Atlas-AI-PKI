@@ -1,11 +1,9 @@
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'dart:io';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as p;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'tables.dart';
 import '../models/models.dart';
+import '../services/atlas_storage.dart';
 
 part 'app_database.g.dart';
 
@@ -24,15 +22,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forPath(String dbPath) : super(NativeDatabase(File(dbPath)));
 
   static Future<String> resolveDatabasePath() async {
-    // Use active Atlas package dir if set, otherwise fall back to documents dir.
-    final prefs = await SharedPreferences.getInstance();
-    final packageDir = prefs.getString('atlas_package_dir');
-    if (packageDir != null && Directory(packageDir).existsSync()) {
-      return p.join(packageDir, 'atlas.db');
-    }
-
-    final docsDir = await getApplicationDocumentsDirectory();
-    return p.join(docsDir.path, 'atlas.db');
+    return AtlasStorage.getDatabasePath();
   }
 
   @override
@@ -382,7 +372,7 @@ class AppDatabase extends _$AppDatabase {
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dbPath = await AppDatabase.resolveDatabasePath();
+    await Directory(File(dbPath).parent.path).create(recursive: true);
     return NativeDatabase.createInBackground(File(dbPath));
   });
 }
-

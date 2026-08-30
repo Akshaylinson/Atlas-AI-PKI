@@ -7,12 +7,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:drift/drift.dart' show Value;
 import '../../core/database/app_database.dart';
 import '../../core/models/models.dart';
 import '../../core/providers/providers.dart';
+import '../../core/services/atlas_storage.dart';
+import '../../core/services/atlas_package_service.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/utils/utils.dart';
 import '../../shared/theme/app_theme.dart';
@@ -217,15 +218,21 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
   Future<void> _toggleRecording() async {
     if (_isRecording) {
       final path = await _recorder.stop();
+      final relativePath = path == null
+          ? null
+          : AtlasStorage.relativePathOfSync(path);
       setState(() {
         _isRecording = false;
-        _voiceNotePath = path;
+        _voiceNotePath = relativePath;
       });
     } else {
       final hasPermission = await _recorder.hasPermission();
       if (!hasPermission) return;
-      final dir = await getApplicationDocumentsDirectory();
-      final path = p.join(dir.path, 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a');
+      final audioDir = await AtlasPackageService.getAudioPath();
+      final path = p.join(
+        audioDir,
+        'voice_${DateTime.now().millisecondsSinceEpoch}.m4a',
+      );
       await _recorder.start(const RecordConfig(), path: path);
       setState(() => _isRecording = true);
     }
@@ -237,7 +244,7 @@ class _EventFormScreenState extends ConsumerState<EventFormScreen> {
       await _player.stop();
       setState(() => _isPlaying = false);
     } else {
-      await _player.setFilePath(_voiceNotePath!);
+      await _player.setFilePath(AtlasStorage.resolvePathSync(_voiceNotePath!));
       _player.play();
       setState(() => _isPlaying = true);
       _player.playerStateStream.listen((state) {

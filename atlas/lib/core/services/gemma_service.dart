@@ -1,5 +1,6 @@
 import '../database/app_database.dart';
 import '../models/models.dart';
+import 'atlas_package_service.dart';
 import 'decision_intelligence.dart';
 import 'model_loader.dart';
 import 'retrieval_engine.dart';
@@ -34,7 +35,10 @@ class GemmaService {
   bool get isModelLoading => _loader.isLoading;
   String? get modelLoadError => _loader.loadError;
 
-  Future<bool> loadModel(String installDir) => _loader.load(installDir);
+  Future<bool> loadModel(String installDir) async {
+    final resolvedPath = await AtlasPackageService.resolvePath(installDir);
+    return _loader.load(resolvedPath);
+  }
 
   Future<String> generateRaw(String prompt) => _loader.generate(prompt);
 
