@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/providers/providers.dart';
+import '../../core/services/ai_api_service.dart';
 import '../../core/services/atlas_package_service.dart';
 import '../../core/services/model_loader.dart';
 import '../search/search_screen.dart';
@@ -40,6 +41,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   void dispose() {
     _apiKeyCtrl.dispose();
+    _geminiKeyCtrl.dispose();
     super.dispose();
   }
 
@@ -58,28 +60,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _loadModelPath() async {
-    final path = await ref.read(databaseProvider).getSetting('gemma_model_path');
+    final path =
+        await ref.read(databaseProvider).getSetting('gemma_model_path');
     if (!mounted) return;
     setState(() => _modelPath = path);
   }
 
   Future<void> _loadApiKey() async {
-    final key = await ref.read(databaseProvider).getSetting('openrouter_api_key');
+    final key =
+        await ref.read(databaseProvider).getSetting('openrouter_api_key');
+    final geminiKey =
+        await ref.read(databaseProvider).getSetting('gemini_api_key');
     if (!mounted) return;
     _apiKeyCtrl.text = key ?? '';
+    _geminiKeyCtrl.text = geminiKey ?? '';
   }
 
   String _fmtBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+    if (bytes < 1024 * 1024 * 1024)
+      return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
     return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(2)} GB';
   }
 
   Future<String> _calcDirSize(String dirPath) async {
     try {
       int total = 0;
-      await for (final e in Directory(dirPath).list(recursive: true, followLinks: false)) {
+      await for (final e
+          in Directory(dirPath).list(recursive: true, followLinks: false)) {
         if (e is File) total += await e.length();
       }
       return _fmtBytes(total);
@@ -91,7 +100,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   // ── Local Gemma model ──────────────────────────────────────────────────────
 
   Future<void> _pickModel() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.any, withData: false);
+    final result = await FilePicker.platform
+        .pickFiles(type: FileType.any, withData: false);
     if (result == null || result.files.isEmpty) return;
     final pickedPath = result.files.first.path;
     if (pickedPath == null) return;
@@ -115,16 +125,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
 
-    setState(() { _loadingModel = true; _loadingStatus = 'Copying model (${(srcSize / 1024 / 1024).toStringAsFixed(0)} MB)…'; });
+    setState(() {
+      _loadingModel = true;
+      _loadingStatus =
+          'Copying model (${(srcSize / 1024 / 1024).toStringAsFixed(0)} MB)…';
+    });
 
     String destPath;
     try {
       destPath = await AtlasPackageService.installModelFile(pickedPath);
-      if (await File(destPath).length() != srcSize) throw Exception('Copy incomplete');
+      if (await File(destPath).length() != srcSize)
+        throw Exception('Copy incomplete');
     } catch (e) {
       if (!mounted) return;
-      setState(() { _loadingModel = false; _loadingStatus = ''; });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copy failed: $e'), backgroundColor: Colors.red));
+      setState(() {
+        _loadingModel = false;
+        _loadingStatus = '';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Copy failed: $e'), backgroundColor: Colors.red));
       return;
     }
 
@@ -132,11 +151,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await ref.read(databaseProvider).setSetting('gemma_model_path', destPath);
     await ref.read(gemmaServiceProvider.notifier).loadModel(destPath);
     if (!mounted) return;
-    setState(() { _modelPath = destPath; _loadingModel = false; _loadingStatus = ''; });
+    setState(() {
+      _modelPath = destPath;
+      _loadingModel = false;
+      _loadingStatus = '';
+    });
 
     final s = ref.read(gemmaServiceProvider);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(s.isLoaded ? 'Gemma model loaded ✓' : 'Load failed: ${s.error ?? 'unknown'}'),
+      content: Text(s.isLoaded
+          ? 'Gemma model loaded ✓'
+          : 'Load failed: ${s.error ?? 'unknown'}'),
       backgroundColor: s.isLoaded ? Colors.green : Colors.red,
     ));
   }
@@ -152,7 +177,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  // ── OpenRouter API ─────────────────────────────────────────────────────────
+  // ── Gemini API ────────────────────────────────────────────────────────────
 
   Future<void> _saveApiKey() async {
     final key = _apiKeyCtrl.text.trim();
@@ -163,16 +188,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  Future<void> _saveGeminiKey() async {
+    final key = _geminiKeyCtrl.text.trim();
+    await ref.read(databaseProvider).setSetting('gemini_api_key', key);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Gemini API key saved')),
+    );
+  }
+
   // ── Package actions ────────────────────────────────────────────────────────
 
   Future<void> _exportPackage() async {
     setState(() => _loadingStatus = 'Exporting…');
     try {
       final path = await AtlasPackageService.exportPackage();
-      await SharePlus.instance.share(ShareParams(files: [XFile(path)], text: 'Atlas Package Export'));
+      await SharePlus.instance.share(
+          ShareParams(files: [XFile(path)], text: 'Atlas Package Export'));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Export failed: $e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _loadingStatus = '');
     }
@@ -187,11 +223,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       await AtlasPackageService.importPackage(path);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Package imported. Restart to apply.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Package imported. Restart to apply.')));
       await _loadPackageInfo();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import failed: $e'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Import failed: $e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _loadingStatus = '');
     }
@@ -202,9 +240,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Clear All Data?'),
-        content: const Text('Permanently deletes ALL entities, events, patterns and statistics. Cannot be undone.'),
+        content: const Text(
+            'Permanently deletes ALL entities, events, patterns and statistics. Cannot be undone.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
@@ -218,7 +259,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     for (final e in await db.getAllEntities()) await db.deleteEntity(e.id);
     for (final e in await db.getAllEvents()) await db.deleteEvent(e.id);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All data cleared')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('All data cleared')));
   }
 
   @override
@@ -232,7 +274,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
-
           // ── Appearance ───────────────────────────────────────────────────
           _SectionTitle(title: 'Appearance'),
           ListTile(
@@ -240,12 +281,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: const Text('Theme'),
             trailing: SegmentedButton<ThemeMode>(
               segments: const [
-                ButtonSegment(value: ThemeMode.light, icon: Icon(Icons.light_mode, size: 16)),
-                ButtonSegment(value: ThemeMode.system, icon: Icon(Icons.brightness_auto, size: 16)),
-                ButtonSegment(value: ThemeMode.dark, icon: Icon(Icons.dark_mode, size: 16)),
+                ButtonSegment(
+                    value: ThemeMode.light,
+                    icon: Icon(Icons.light_mode, size: 16)),
+                ButtonSegment(
+                    value: ThemeMode.system,
+                    icon: Icon(Icons.brightness_auto, size: 16)),
+                ButtonSegment(
+                    value: ThemeMode.dark,
+                    icon: Icon(Icons.dark_mode, size: 16)),
               ],
               selected: {themeMode},
-              onSelectionChanged: (s) => ref.read(themeModeProvider.notifier).state = s.first,
+              onSelectionChanged: (s) =>
+                  ref.read(themeModeProvider.notifier).state = s.first,
             ),
           ),
 
@@ -262,28 +310,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     sublabel: 'Gemma on-device\n.task / .bin model',
                     active: aiMode == AiMode.local,
                     statusColor: aiMode == AiMode.local
-                        ? (modelState.isLoading ? Colors.orange : modelState.isLoaded ? Colors.green : Colors.red)
+                        ? (modelState.isLoading
+                            ? Colors.orange
+                            : modelState.isLoaded
+                                ? Colors.green
+                                : Colors.red)
                         : Colors.grey,
                     statusLabel: aiMode == AiMode.local
-                        ? (modelState.isLoading ? 'Loading…' : modelState.isLoaded ? 'Ready' : 'Not loaded')
+                        ? (modelState.isLoading
+                            ? 'Loading…'
+                            : modelState.isLoaded
+                                ? 'Ready'
+                                : 'Not loaded')
                         : 'Off',
                     onTap: () => ref.read(aiModeProvider.notifier).set(
-                      aiMode == AiMode.local ? AiMode.off : AiMode.local,
-                    ),
+                          aiMode == AiMode.local ? AiMode.off : AiMode.local,
+                        ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: _AiModeCard(
                     icon: Icons.cloud_outlined,
-                    label: 'OpenRouter',
-                    sublabel: 'Cloud API\nRequires internet',
+                    label: 'Gemini API',
+                    sublabel: 'Google AI Studio\nCloud API',
                     active: aiMode == AiMode.api,
-                    statusColor: aiMode == AiMode.api ? Colors.green : Colors.grey,
+                    statusColor:
+                        aiMode == AiMode.api ? Colors.green : Colors.grey,
                     statusLabel: aiMode == AiMode.api ? 'Active' : 'Off',
                     onTap: () => ref.read(aiModeProvider.notifier).set(
-                      aiMode == AiMode.api ? AiMode.off : AiMode.api,
-                    ),
+                          aiMode == AiMode.api ? AiMode.off : AiMode.api,
+                        ),
                   ),
                 ),
               ],
@@ -294,7 +351,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _SectionTitle(title: 'Local Gemma Model'),
           ListTile(
             leading: Icon(Icons.psychology_outlined,
-                color: modelState.isLoaded ? Colors.green : scheme.onSurface.withOpacity(0.5)),
+                color: modelState.isLoaded
+                    ? Colors.green
+                    : scheme.onSurface.withOpacity(0.5)),
             title: const Text('Model File'),
             subtitle: Text(
               _modelPath != null && _modelPath!.isNotEmpty
@@ -302,19 +361,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   : 'No model — download a Gemma .task or .bin file',
               style: TextStyle(
                 fontSize: 12,
-                color: _modelPath != null && _modelPath!.isNotEmpty ? Colors.green : Colors.orange,
+                color: _modelPath != null && _modelPath!.isNotEmpty
+                    ? Colors.green
+                    : Colors.orange,
               ),
             ),
             trailing: _loadingModel
                 ? Column(mainAxisSize: MainAxisSize.min, children: [
-                    const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                    if (_loadingStatus.isNotEmpty) Text(_loadingStatus, style: const TextStyle(fontSize: 9)),
+                    const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2)),
+                    if (_loadingStatus.isNotEmpty)
+                      Text(_loadingStatus, style: const TextStyle(fontSize: 9)),
                   ])
                 : Row(mainAxisSize: MainAxisSize.min, children: [
-                    TextButton(onPressed: _pickModel, child: const Text('Browse')),
+                    TextButton(
+                        onPressed: _pickModel, child: const Text('Browse')),
                     if (_modelPath != null && _modelPath!.isNotEmpty)
                       IconButton(
-                        icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                        icon: const Icon(Icons.delete_outline,
+                            size: 18, color: Colors.red),
                         tooltip: 'Unload model',
                         onPressed: _unloadModel,
                       ),
@@ -325,12 +392,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: Text(
               'Download: kaggle.com/models/google/gemma/frameworks/tfLite\n'
               'Recommended: gemma-2b-it-gpu-int4.bin (~1.3 GB)',
-              style: TextStyle(fontSize: 11, color: scheme.onSurface.withOpacity(0.45)),
+              style: TextStyle(
+                  fontSize: 11, color: scheme.onSurface.withOpacity(0.45)),
             ),
           ),
 
-          // ── OpenRouter API ───────────────────────────────────────────────
-          _SectionTitle(title: 'OpenRouter API'),
+          // ── Gemini API ─────────────────────────────────────────────────
+          _SectionTitle(title: '$kPrimaryAiProviderName API'),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
             child: TextField(
@@ -339,11 +407,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               autocorrect: false,
               enableSuggestions: false,
               decoration: InputDecoration(
-                labelText: 'API Key',
-                helperText: 'Get a free key at openrouter.ai',
+                labelText: '$kPrimaryAiProviderName API Key',
+                helperText: 'Get your key from Google AI Studio',
                 suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
                   IconButton(
-                    icon: Icon(_showApiKey ? Icons.visibility_off : Icons.visibility),
+                    icon: Icon(
+                        _showApiKey ? Icons.visibility_off : Icons.visibility),
                     onPressed: () => setState(() => _showApiKey = !_showApiKey),
                   ),
                   IconButton(
@@ -356,6 +425,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onSubmitted: (_) => _saveApiKey(),
             ),
           ),
+          _SectionTitle(title: '$kFallbackAiProviderName API'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: TextField(
+              controller: _geminiKeyCtrl,
+              obscureText: !_showGeminiKey,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: InputDecoration(
+                labelText: '$kFallbackAiProviderName API Key',
+                helperText: 'Get a free key at openrouter.ai',
+                suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
+                  IconButton(
+                    icon: Icon(_showGeminiKey
+                        ? Icons.visibility_off
+                        : Icons.visibility),
+                    onPressed: () =>
+                        setState(() => _showGeminiKey = !_showGeminiKey),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.save_outlined),
+                    tooltip: 'Save',
+                    onPressed: _saveGeminiKey,
+                  ),
+                ]),
+              ),
+              onSubmitted: (_) => _saveGeminiKey(),
+            ),
+          ),
 
           // ── Search ───────────────────────────────────────────────────────
           _SectionTitle(title: 'Search'),
@@ -363,7 +461,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             leading: const Icon(Icons.search),
             title: const Text('Open Search'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const SearchScreen())),
           ),
 
           // ── Atlas Package ────────────────────────────────────────────────
@@ -371,17 +470,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           if (_packageMeta.isNotEmpty)
             ListTile(
               leading: const Icon(Icons.folder_special_outlined),
-              title: Text(_packageMeta['package_id'] as String? ?? _packageMeta['name'] as String? ?? 'Unknown'),
+              title: Text(_packageMeta['package_id'] as String? ??
+                  _packageMeta['name'] as String? ??
+                  'Unknown'),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(_packageDir ?? '', style: const TextStyle(fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(_packageDir ?? '',
+                      style: const TextStyle(fontSize: 11),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
                   if (_storageSize.isNotEmpty)
-                    Text('Size: $_storageSize', style: const TextStyle(fontSize: 11)),
+                    Text('Size: $_storageSize',
+                        style: const TextStyle(fontSize: 11)),
                   if (_validationIssues.isNotEmpty)
-                    Text('⚠ ${_validationIssues.length} issue(s)', style: const TextStyle(fontSize: 11, color: Colors.orange))
+                    Text('⚠ ${_validationIssues.length} issue(s)',
+                        style:
+                            const TextStyle(fontSize: 11, color: Colors.orange))
                   else
-                    const Text('✓ Valid', style: TextStyle(fontSize: 11, color: Colors.green)),
+                    const Text('✓ Valid',
+                        style: TextStyle(fontSize: 11, color: Colors.green)),
                 ],
               ),
               isThreeLine: true,
@@ -394,8 +502,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               await _loadPackageInfo();
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text(_validationIssues.isEmpty ? 'Package is valid ✓' : 'Issues: ${_validationIssues.join(', ')}'),
-                backgroundColor: _validationIssues.isEmpty ? Colors.green : Colors.orange,
+                content: Text(_validationIssues.isEmpty
+                    ? 'Package is valid ✓'
+                    : 'Issues: ${_validationIssues.join(', ')}'),
+                backgroundColor:
+                    _validationIssues.isEmpty ? Colors.green : Colors.orange,
               ));
             },
           ),
@@ -403,7 +514,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             leading: const Icon(Icons.upload_outlined),
             title: const Text('Export Package (.atlas)'),
             trailing: _loadingStatus == 'Exporting…'
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.chevron_right),
             onTap: _exportPackage,
           ),
@@ -411,7 +525,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             leading: const Icon(Icons.download_outlined),
             title: const Text('Import Package'),
             trailing: _loadingStatus == 'Importing…'
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.chevron_right),
             onTap: _importPackage,
           ),
@@ -427,8 +544,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           // ── Data ─────────────────────────────────────────────────────────
           _SectionTitle(title: 'Data'),
           ListTile(
-            leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
-            title: const Text('Clear All Data', style: TextStyle(color: Colors.red)),
+            leading:
+                const Icon(Icons.delete_forever_outlined, color: Colors.red),
+            title: const Text('Clear All Data',
+                style: TextStyle(color: Colors.red)),
             subtitle: const Text('Permanently delete everything'),
             onTap: _clearAllData,
           ),
@@ -438,8 +557,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           Consumer(builder: (context, ref, _) {
             final capAsync = ref.watch(hostCapabilityProvider);
             return capAsync.when(
-              loading: () => const ListTile(leading: Icon(Icons.memory_outlined), title: Text('Detecting…')),
-              error: (_, __) => const ListTile(leading: Icon(Icons.memory_outlined), title: Text('Detection unavailable')),
+              loading: () => const ListTile(
+                  leading: Icon(Icons.memory_outlined),
+                  title: Text('Detecting…')),
+              error: (_, __) => const ListTile(
+                  leading: Icon(Icons.memory_outlined),
+                  title: Text('Detection unavailable')),
               data: (cap) => Column(children: [
                 ListTile(
                   leading: const Icon(Icons.memory_outlined),
@@ -454,7 +577,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ListTile(
                   leading: const Icon(Icons.smart_toy_outlined),
                   title: const Text('AI Runtime'),
-                  subtitle: Text(cap.aiRuntime, style: const TextStyle(fontSize: 11)),
+                  subtitle:
+                      Text(cap.aiRuntime, style: const TextStyle(fontSize: 11)),
                 ),
               ]),
             );
@@ -465,12 +589,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const ListTile(
             leading: Icon(Icons.info_outline),
             title: Text('Atlas'),
-            subtitle: Text('Portable Personal Intelligence System\nVersion 2.0.0'),
+            subtitle:
+                Text('Portable Personal Intelligence System\nVersion 2.0.0'),
           ),
           const ListTile(
             leading: Icon(Icons.lock_outline),
             title: Text('Privacy'),
-            subtitle: Text('All data is stored locally in your Atlas Package. Nothing is sent to any server unless OpenRouter API mode is active.'),
+            subtitle: Text(
+                'All data is stored locally in your Atlas Package. Nothing is sent to any server unless Gemini API or OpenRouter fallback mode is active.'),
           ),
           const SizedBox(height: 32),
         ],
@@ -509,10 +635,14 @@ class _AiModeCard extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: active ? scheme.primaryContainer.withOpacity(0.5) : scheme.surfaceContainerHighest.withOpacity(0.4),
+          color: active
+              ? scheme.primaryContainer.withOpacity(0.5)
+              : scheme.surfaceContainerHighest.withOpacity(0.4),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: active ? scheme.primary : scheme.outlineVariant.withOpacity(0.5),
+            color: active
+                ? scheme.primary
+                : scheme.outlineVariant.withOpacity(0.5),
             width: active ? 2 : 1,
           ),
         ),
@@ -520,19 +650,35 @@ class _AiModeCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              Icon(icon, size: 20, color: active ? scheme.primary : scheme.onSurface.withOpacity(0.5)),
+              Icon(icon,
+                  size: 20,
+                  color: active
+                      ? scheme.primary
+                      : scheme.onSurface.withOpacity(0.5)),
               const Spacer(),
               Container(
-                width: 8, height: 8,
-                decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
+                width: 8,
+                height: 8,
+                decoration:
+                    BoxDecoration(color: statusColor, shape: BoxShape.circle),
               ),
             ]),
             const SizedBox(height: 8),
-            Text(label, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: active ? scheme.primary : scheme.onSurface)),
+            Text(label,
+                style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: active ? scheme.primary : scheme.onSurface)),
             const SizedBox(height: 2),
-            Text(sublabel, style: TextStyle(fontSize: 10, color: scheme.onSurface.withOpacity(0.5))),
+            Text(sublabel,
+                style: TextStyle(
+                    fontSize: 10, color: scheme.onSurface.withOpacity(0.5))),
             const SizedBox(height: 6),
-            Text(statusLabel, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: statusColor)),
+            Text(statusLabel,
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: statusColor)),
           ],
         ),
       ),

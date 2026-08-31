@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-/// Google Gemini API (AI Studio) — fallback when OpenRouter fails.
+/// Google Gemini API (AI Studio).
 class GeminiService {
   final String apiKey;
   static const _model = 'gemini-2.0-flash';

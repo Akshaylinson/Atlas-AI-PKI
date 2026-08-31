@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/providers/providers.dart';
+import '../../core/services/ai_api_service.dart';
 import '../../core/services/atlas_package_service.dart';
+import '../../core/services/model_loader.dart';
 import '../package/package_setup_screen.dart';
 import '../search/search_screen.dart';
 
@@ -17,6 +19,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final TextEditingController _apiKeyCtrl = TextEditingController();
+  final TextEditingController _geminiKeyCtrl = TextEditingController();
 
   String? _modelPath;
   bool _loadingModel = false;
@@ -24,6 +27,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Map<String, dynamic> _packageMeta = {};
   String? _packageDir;
   bool _showApiKey = false;
+  bool _showGeminiKey = false;
 
   @override
   void initState() {
@@ -36,6 +40,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   void dispose() {
     _apiKeyCtrl.dispose();
+    _geminiKeyCtrl.dispose();
     super.dispose();
   }
 
@@ -59,8 +64,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _loadApiKey() async {
     final db = ref.read(databaseProvider);
     final key = await db.getSetting('openrouter_api_key');
+    final geminiKey = await db.getSetting('gemini_api_key');
     if (!mounted) return;
     _apiKeyCtrl.text = key ?? '';
+    _geminiKeyCtrl.text = geminiKey ?? '';
   }
 
   Future<void> _saveApiKey() async {
@@ -69,6 +76,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('OpenRouter API key saved')),
+    );
+  }
+
+  Future<void> _saveGeminiKey() async {
+    final key = _geminiKeyCtrl.text.trim();
+    await ref.read(databaseProvider).setSetting('gemini_api_key', key);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Gemini API key saved')),
     );
   }
 
@@ -89,7 +105,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Unsupported model format. Please choose a .task or .bin file.'),
+            content: Text(
+                'Unsupported model format. Please choose a .task or .bin file.'),
             backgroundColor: Colors.red,
           ),
         );
@@ -103,7 +120,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('File too small ($srcSize bytes) - not a valid model file'),
+            content: Text(
+                'File too small ($srcSize bytes) - not a valid model file'),
             backgroundColor: Colors.red,
           ),
         );
@@ -113,7 +131,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     setState(() {
       _loadingModel = true;
-      _loadingStatus = 'Copying model (${(srcSize / 1024 / 1024).toStringAsFixed(0)} MB)...';
+      _loadingStatus =
+          'Copying model (${(srcSize / 1024 / 1024).toStringAsFixed(0)} MB)...';
     });
 
     final String destPath;
@@ -130,7 +149,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _loadingStatus = '';
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to copy model: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Failed to copy model: $e'),
+              backgroundColor: Colors.red),
         );
       }
       return;
@@ -173,7 +194,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Export failed: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -193,14 +215,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await AtlasPackageService.importPackage(path);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Package imported. Restart the app to apply.')),
+          const SnackBar(
+              content: Text('Package imported. Restart the app to apply.')),
         );
         await _loadPackageInfo();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Import failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Import failed: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -338,8 +362,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
 
-          // OpenRouter API
-          _SectionTitle(title: 'OpenRouter API'),
+          // Gemini API
+          _SectionTitle(title: '$kPrimaryAiProviderName API'),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: TextField(
@@ -348,8 +372,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               autocorrect: false,
               enableSuggestions: false,
               decoration: InputDecoration(
-                labelText: 'OpenRouter API Key',
-                helperText: 'Get your free key at openrouter.ai',
+                labelText: '$kPrimaryAiProviderName API Key',
+                helperText: 'Get your key from Google AI Studio',
                 suffixIcon: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -370,6 +394,43 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
               onSubmitted: (_) => _saveApiKey(),
+            ),
+          ),
+
+          // Gemini API
+          _SectionTitle(title: '$kFallbackAiProviderName API'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: TextField(
+              controller: _geminiKeyCtrl,
+              obscureText: !_showGeminiKey,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: InputDecoration(
+                labelText: '$kFallbackAiProviderName API Key',
+                helperText: 'Get a free key at openrouter.ai',
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: _showGeminiKey ? 'Hide key' : 'Show key',
+                      icon: Icon(
+                        _showGeminiKey
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                      ),
+                      onPressed: () =>
+                          setState(() => _showGeminiKey = !_showGeminiKey),
+                    ),
+                    IconButton(
+                      tooltip: 'Save key',
+                      icon: const Icon(Icons.save_outlined),
+                      onPressed: _saveGeminiKey,
+                    ),
+                  ],
+                ),
+              ),
+              onSubmitted: (_) => _saveGeminiKey(),
             ),
           ),
 
@@ -435,7 +496,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           // Data
           _SectionTitle(title: 'Data'),
           ListTile(
-            leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
+            leading:
+                const Icon(Icons.delete_forever_outlined, color: Colors.red),
             title: const Text(
               'Clear All Data',
               style: TextStyle(color: Colors.red),
@@ -449,13 +511,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const ListTile(
             leading: Icon(Icons.info_outline),
             title: Text('Atlas'),
-            subtitle: Text('Personal Intelligence Operating System\nVersion 1.0.0'),
+            subtitle:
+                Text('Personal Intelligence Operating System\nVersion 1.0.0'),
           ),
           const ListTile(
             leading: Icon(Icons.lock_outline),
             title: Text('Privacy'),
             subtitle: Text(
-              'All data is stored locally on your device. Nothing is sent to any server.',
+              'All data is stored locally on your device. Nothing is sent to any server unless $kPrimaryAiProviderName or $kFallbackAiProviderName API mode is active.',
             ),
           ),
           const SizedBox(height: 32),

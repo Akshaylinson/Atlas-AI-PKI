@@ -10,9 +10,8 @@ import '../services/gemma_service.dart';
 import '../services/file_storage_service.dart';
 import '../services/model_installer.dart';
 import '../services/model_loader.dart';
-import '../services/openrouter_service.dart';
-import '../services/gemini_service.dart';
-import '../services/ai_api_service.dart';
+import '../services/ai_api_service.dart'
+    show AiApiService, kPrimaryAiProviderName, kFallbackAiProviderName;
 import '../services/host_capability.dart';
 
 final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.system);
@@ -39,14 +38,17 @@ final analyticsEngineProvider = Provider<AnalyticsEngine>((ref) {
   return AnalyticsEngine(ref.watch(databaseProvider));
 });
 
-final decisionIntelligenceProvider = Provider<DecisionIntelligenceEngine>((ref) {
+final decisionIntelligenceProvider =
+    Provider<DecisionIntelligenceEngine>((ref) {
   return DecisionIntelligenceEngine(ref.watch(databaseProvider));
 });
 
-final modelInstallerProvider = Provider<ModelInstaller>((ref) => ModelInstaller());
+final modelInstallerProvider =
+    Provider<ModelInstaller>((ref) => ModelInstaller());
 
 final modelInstallProvider = FutureProvider<String?>((ref) async {
-  final savedPath = await ref.watch(databaseProvider).getSetting('gemma_model_path');
+  final savedPath =
+      await ref.watch(databaseProvider).getSetting('gemma_model_path');
   if (savedPath != null &&
       savedPath.isNotEmpty &&
       supportedGemmaModelExtensions.any(savedPath.toLowerCase().endsWith)) {
@@ -60,7 +62,8 @@ class _ModelState {
   final bool isLoading;
   final bool isLoaded;
   final String? error;
-  const _ModelState({this.isLoading = false, this.isLoaded = false, this.error});
+  const _ModelState(
+      {this.isLoading = false, this.isLoaded = false, this.error});
 }
 
 class GemmaServiceNotifier extends StateNotifier<_ModelState> {
@@ -86,7 +89,8 @@ class GemmaServiceNotifier extends StateNotifier<_ModelState> {
   String? get modelLoadError => state.error;
 }
 
-final gemmaServiceProvider = StateNotifierProvider<GemmaServiceNotifier, _ModelState>((ref) {
+final gemmaServiceProvider =
+    StateNotifierProvider<GemmaServiceNotifier, _ModelState>((ref) {
   return GemmaServiceNotifier(GemmaService(ref.watch(databaseProvider)));
 });
 
@@ -100,7 +104,11 @@ class _AiModeNotifier extends StateNotifier<AiMode> {
   Future<void> _load() async {
     final raw = await _ref.read(databaseProvider).getSetting('ai_mode');
     if (!mounted) return;
-    final mode = raw == 'api' ? AiMode.api : raw == 'local' ? AiMode.local : AiMode.off;
+    final mode = raw == 'api'
+        ? AiMode.api
+        : raw == 'local'
+            ? AiMode.local
+            : AiMode.off;
     state = mode;
     if (mode == AiMode.local) await _loadLocalModel();
   }
@@ -109,7 +117,12 @@ class _AiModeNotifier extends StateNotifier<AiMode> {
     final prev = state;
     state = mode;
     await _ref.read(databaseProvider).setSetting(
-        'ai_mode', mode == AiMode.api ? 'api' : mode == AiMode.local ? 'local' : 'off');
+        'ai_mode',
+        mode == AiMode.api
+            ? 'api'
+            : mode == AiMode.local
+                ? 'local'
+                : 'off');
     if (mode == AiMode.local && prev != AiMode.local) {
       await _loadLocalModel();
     } else if (mode != AiMode.local && prev == AiMode.local) {
@@ -159,7 +172,8 @@ final entityByIdProvider = StreamProvider.family<Entity?, String>((ref, id) {
   return ref.watch(databaseProvider).watchEntityById(id);
 });
 
-final entitySearchProvider = FutureProvider.family<List<Entity>, String>((ref, query) {
+final entitySearchProvider =
+    FutureProvider.family<List<Entity>, String>((ref, query) {
   if (query.isEmpty) return ref.watch(databaseProvider).getAllEntities();
   return ref.watch(databaseProvider).searchEntities(query);
 });
@@ -170,11 +184,13 @@ final eventsStreamProvider = StreamProvider<List<Event>>((ref) {
   return ref.watch(databaseProvider).watchAllEvents();
 });
 
-final eventsForEntityProvider = StreamProvider.family<List<Event>, String>((ref, entityId) {
+final eventsForEntityProvider =
+    StreamProvider.family<List<Event>, String>((ref, entityId) {
   return ref.watch(databaseProvider).watchEventsForEntity(entityId);
 });
 
-final matricesForEntityProvider = StreamProvider.family<List<DecisionMatrix>, String>((ref, entityId) {
+final matricesForEntityProvider =
+    StreamProvider.family<List<DecisionMatrix>, String>((ref, entityId) {
   return ref.watch(databaseProvider).watchMatricesForEntity(entityId);
 });
 
@@ -283,12 +299,13 @@ class AIChatNotifier extends StateNotifier<List<ChatMessage>> {
       if (mode == AiMode.local) {
         final isLoaded = _ref.read(gemmaServiceProvider.notifier).isLoaded;
         if (!isLoaded) {
-          finalAnswer = 'Local AI model is not loaded yet. Toggle AI off and on again to reload.';
+          finalAnswer =
+              'Local AI model is not loaded yet. Toggle AI off and on again to reload.';
         } else {
           final hasKbData = response.context.isNotEmpty &&
               ((response.context['entities'] as List?)?.isNotEmpty == true ||
-               (response.context['events'] as List?)?.isNotEmpty == true ||
-               (response.context['patterns'] as List?)?.isNotEmpty == true);
+                  (response.context['events'] as List?)?.isNotEmpty == true ||
+                  (response.context['patterns'] as List?)?.isNotEmpty == true);
           final prompt = hasKbData
               ? 'You are Atlas, a personal knowledge assistant. Answer using ONLY the evidence below. Be concise.\n\nEvidence:\n${response.answer}\n\nQuestion: $text'
               : 'You are Atlas, a personal knowledge assistant. The user asked: "$text"\n\nKnowledge base result: "${response.answer}"\n\nRespond helpfully.';
@@ -297,12 +314,13 @@ class AIChatNotifier extends StateNotifier<List<ChatMessage>> {
       } else if (mode == AiMode.api) {
         final apiService = await _ref.read(aiApiServiceProvider.future);
         if (!apiService.hasAnyKey) {
-          finalAnswer = 'No API key configured. Go to Settings and add an OpenRouter or Gemini API key.';
+          finalAnswer =
+              'No API key configured. Go to Settings and add an $kPrimaryAiProviderName or $kFallbackAiProviderName API key.';
         } else {
           final hasKbData = response.context.isNotEmpty &&
               ((response.context['entities'] as List?)?.isNotEmpty == true ||
-               (response.context['events'] as List?)?.isNotEmpty == true ||
-               (response.context['patterns'] as List?)?.isNotEmpty == true);
+                  (response.context['events'] as List?)?.isNotEmpty == true ||
+                  (response.context['patterns'] as List?)?.isNotEmpty == true);
           final prompt = hasKbData
               ? 'You are Atlas, a personal knowledge assistant. Answer the user question using ONLY the evidence below. Be concise and natural.\n\nEvidence:\n${response.answer}\n\nQuestion: $text'
               : 'You are Atlas, a personal knowledge assistant. The user asked: "$text"\n\nThe knowledge base returned: "${response.answer}"\n\nRespond helpfully. If the entity or data is not found, say so clearly and suggest the user verify the name or add data first.';
@@ -310,20 +328,26 @@ class AIChatNotifier extends StateNotifier<List<ChatMessage>> {
         }
       }
 
-      state = [...state, ChatMessage(
-        id: '${DateTime.now().millisecondsSinceEpoch}_ai',
-        text: finalAnswer,
-        isUser: false,
-        timestamp: DateTime.now(),
-        context: response.context,
-      )];
+      state = [
+        ...state,
+        ChatMessage(
+          id: '${DateTime.now().millisecondsSinceEpoch}_ai',
+          text: finalAnswer,
+          isUser: false,
+          timestamp: DateTime.now(),
+          context: response.context,
+        )
+      ];
     } catch (e) {
-      state = [...state, ChatMessage(
-        id: '${DateTime.now().millisecondsSinceEpoch}_err',
-        text: 'Error: $e',
-        isUser: false,
-        timestamp: DateTime.now(),
-      )];
+      state = [
+        ...state,
+        ChatMessage(
+          id: '${DateTime.now().millisecondsSinceEpoch}_err',
+          text: 'Error: $e',
+          isUser: false,
+          timestamp: DateTime.now(),
+        )
+      ];
     }
   }
 
@@ -333,7 +357,8 @@ class AIChatNotifier extends StateNotifier<List<ChatMessage>> {
   }
 }
 
-final aiChatProvider = StateNotifierProvider<AIChatNotifier, List<ChatMessage>>((ref) {
+final aiChatProvider =
+    StateNotifierProvider<AIChatNotifier, List<ChatMessage>>((ref) {
   return AIChatNotifier(ref.watch(gemmaServiceProvider.notifier).service, ref);
 });
 

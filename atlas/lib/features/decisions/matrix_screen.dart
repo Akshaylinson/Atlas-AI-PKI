@@ -126,7 +126,8 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
                   const Expanded(
                     child: Text(
                       'Criteria',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                     ),
                   ),
                   TextButton.icon(
@@ -144,7 +145,10 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
                   subtitle: 'Add at least two criteria to continue',
                 )
               else
-                ..._criteria.asMap().entries.map((entry) => _buildCriterionRow(entry.key, entry.value)),
+                ..._criteria
+                    .asMap()
+                    .entries
+                    .map((entry) => _buildCriterionRow(entry.key, entry.value)),
               const SizedBox(height: 8),
             ],
           ),
@@ -157,7 +161,11 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
               decoration: BoxDecoration(
                 color: Theme.of(context).scaffoldBackgroundColor,
                 border: Border(
-                  top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.4)),
+                  top: BorderSide(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outlineVariant
+                          .withValues(alpha: 0.4)),
                 ),
               ),
               child: Row(
@@ -166,15 +174,19 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
                     child: SizedBox(
                       height: 52,
                       child: OutlinedButton.icon(
-                        onPressed: _loadingSuggestions ? null : _suggestCriteriaWithAi,
+                        onPressed:
+                            _loadingSuggestions ? null : _suggestCriteriaWithAi,
                         icon: _loadingSuggestions
                             ? const SizedBox(
                                 width: 16,
                                 height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
                               )
                             : const Icon(Icons.auto_awesome),
-                        label: Text(_loadingSuggestions ? 'Suggesting...' : 'Suggest with AI'),
+                        label: Text(_loadingSuggestions
+                            ? 'Suggesting...'
+                            : 'Suggest with AI'),
                       ),
                     ),
                   ),
@@ -183,7 +195,9 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
                     child: SizedBox(
                       height: 52,
                       child: FilledButton(
-                        onPressed: _canGoToScoring ? () => setState(() => _phase = 1) : null,
+                        onPressed: _canGoToScoring
+                            ? () => setState(() => _phase = 1)
+                            : null,
                         child: const Text('Next'),
                       ),
                     ),
@@ -203,7 +217,9 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
       children: [
         SectionHeader(title: 'Scoring'),
         Text(
-          _questionController.text.isEmpty ? 'Question' : _questionController.text,
+          _questionController.text.isEmpty
+              ? 'Question'
+              : _questionController.text,
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 16),
@@ -236,7 +252,10 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
               columns: [
                 const DataColumn(label: Text('Option')),
                 ..._criteria
-                    .map((criterion) => DataColumn(label: Text(criterion.name.isEmpty ? 'Criterion' : criterion.name)))
+                    .map((criterion) => DataColumn(
+                        label: Text(criterion.name.isEmpty
+                            ? 'Criterion'
+                            : criterion.name)))
                     .toList(),
               ],
               rows: _options.asMap().entries.map((entry) {
@@ -247,7 +266,9 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
                     DataCell(
                       SizedBox(
                         width: 120,
-                        child: Text(option.controller.text.isEmpty ? 'Option ${optionIndex + 1}' : option.controller.text),
+                        child: Text(option.controller.text.isEmpty
+                            ? 'Option ${optionIndex + 1}'
+                            : option.controller.text),
                       ),
                     ),
                     ..._criteria.map((criterion) {
@@ -344,7 +365,8 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+          border:
+              Border.all(color: Theme.of(context).colorScheme.outlineVariant),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -418,7 +440,8 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
 
   bool get _canGoToScoring {
     final question = _questionController.text.trim();
-    final hasCriteria = _criteria.where((c) => c.controller.text.trim().isNotEmpty).length >= 2;
+    final hasCriteria =
+        _criteria.where((c) => c.controller.text.trim().isNotEmpty).length >= 2;
     return question.isNotEmpty && hasCriteria;
   }
 
@@ -441,7 +464,8 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
     for (final option in options) {
       final weightedScore = criteria.fold<double>(
         0.0,
-        (sum, c) => sum + (option.scores[c.liveKey] ?? 0) * (c.weight / totalWeight),
+        (sum, c) =>
+            sum + (option.scores[c.liveKey] ?? 0) * (c.weight / totalWeight),
       );
       results.add(_ResultRow(name: option.name, weightedScore: weightedScore));
     }
@@ -450,7 +474,8 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
     final separation = results.length > 1
         ? (results[0].weightedScore - results[1].weightedScore) / 5.0
         : 1.0;
-    final maxWeight = criteria.map((c) => c.weight / totalWeight).reduce(math.max);
+    final maxWeight =
+        criteria.map((c) => c.weight / totalWeight).reduce(math.max);
     final balance = maxWeight > 0.6 ? 0.5 : 1.0;
     final confidence = ((separation * 0.6) + (balance * 0.4)).clamp(0.0, 1.0);
 
@@ -467,7 +492,10 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
 
   List<_OptionDraft> get _activeOptions {
     return _options
-        .map((option) => option.copyWith(name: option.controller.text.trim().isEmpty ? option.name : option.controller.text.trim()))
+        .map((option) => option.copyWith(
+            name: option.controller.text.trim().isEmpty
+                ? option.name
+                : option.controller.text.trim()))
         .toList();
   }
 
@@ -487,7 +515,7 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
         'List 4 short decision criteria for: "$question" about $entityName. $ctx'
         ' Reply with only a JSON array of strings. Example: ["Cost","Speed","Quality","Risk"]';
 
-    // ── API mode (OpenRouter → Gemini fallback) ──────────────────────────────
+    // ── API mode (Gemini → OpenRouter fallback) ──────────────────────────────
     if (aiMode == AiMode.api) {
       setState(() => _loadingSuggestions = true);
       try {
@@ -495,7 +523,9 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
         if (!apiService.hasAnyKey) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('No API key configured. Add one in Settings.')),
+              const SnackBar(
+                  content: Text(
+                      'No API key configured. Add a Gemini or OpenRouter API key in Settings.')),
             );
           }
           return;
@@ -520,7 +550,8 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('No AI active. Enable Local AI or OpenRouter API in Settings.'),
+            content: Text(
+                'No AI active. Enable Local AI or Gemini/OpenRouter API in Settings.'),
           ),
         );
       }
@@ -554,7 +585,9 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not parse AI response — using generic criteria')),
+          const SnackBar(
+              content:
+                  Text('Could not parse AI response — using generic criteria')),
         );
       }
       return;
@@ -589,7 +622,8 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
             final value = item.trim();
             if (value.isNotEmpty) candidates.add(value);
           } else if (item is Map) {
-            final value = (item['name'] ?? item['criterion'] ?? '').toString().trim();
+            final value =
+                (item['name'] ?? item['criterion'] ?? '').toString().trim();
             if (value.isNotEmpty) candidates.add(value);
           }
         }
@@ -617,7 +651,8 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
     for (final option in options) {
       final weightedScore = criteria.fold<double>(
         0.0,
-        (sum, c) => sum + (option.scores[c.liveKey] ?? 0) * (c.weight / totalWeight),
+        (sum, c) =>
+            sum + (option.scores[c.liveKey] ?? 0) * (c.weight / totalWeight),
       );
       ranked.add(_ResultRow(name: option.name, weightedScore: weightedScore));
     }
@@ -628,18 +663,24 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
       id: _matrixId,
       entityId: widget.entityId,
       question: _questionController.text.trim(),
-      criteria: jsonEncode(criteria.map((c) => {
-            'name': c.liveKey,
-            'weight': c.weight,
-          }).toList()),
-      options: jsonEncode(options.map((option) => {
-            'name': option.name,
-            'scores': option.scores,
-          }).toList()),
-      result: jsonEncode(ranked.map((result) => {
-            'name': result.name,
-            'weightedScore': result.weightedScore,
-          }).toList()),
+      criteria: jsonEncode(criteria
+          .map((c) => {
+                'name': c.liveKey,
+                'weight': c.weight,
+              })
+          .toList()),
+      options: jsonEncode(options
+          .map((option) => {
+                'name': option.name,
+                'scores': option.scores,
+              })
+          .toList()),
+      result: jsonEncode(ranked
+          .map((result) => {
+                'name': result.name,
+                'weightedScore': result.weightedScore,
+              })
+          .toList()),
       confidenceScore: confidence,
       createdAt: widget.existing?.createdAt ?? DateTime.now(),
     );
@@ -705,7 +746,8 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
               scores[key.toString()] = (value as num?)?.toInt() ?? 0;
             });
           }
-          return _OptionDraft(name: (map['name'] ?? '').toString(), scores: scores);
+          return _OptionDraft(
+              name: (map['name'] ?? '').toString(), scores: scores);
         }).toList();
       }
     } catch (_) {}
@@ -750,7 +792,9 @@ class _OptionDraft {
       : controller = TextEditingController(text: name);
 
   _OptionDraft copyWith({String? name, Map<String, int>? scores}) {
-    return _OptionDraft(name: name ?? this.name, scores: scores ?? Map<String, int>.from(this.scores));
+    return _OptionDraft(
+        name: name ?? this.name,
+        scores: scores ?? Map<String, int>.from(this.scores));
   }
 }
 
@@ -783,8 +827,11 @@ class _ScorePicker extends StatelessWidget {
               height: 18,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: selected ? Theme.of(context).colorScheme.primary : Colors.transparent,
-                border: Border.all(color: Theme.of(context).colorScheme.primary),
+                color: selected
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.transparent,
+                border:
+                    Border.all(color: Theme.of(context).colorScheme.primary),
               ),
             ),
           ),
@@ -819,7 +866,8 @@ class _ResultCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   result.name,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w700),
                 ),
               ),
               Text('${result.weightedScore.toStringAsFixed(2)} / 5.0'),
@@ -860,6 +908,3 @@ class _ConfidenceBadge extends StatelessWidget {
     );
   }
 }
-
-
-

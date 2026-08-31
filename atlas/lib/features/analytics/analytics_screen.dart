@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/providers/providers.dart';
 import '../../core/database/app_database.dart';
+import '../../core/services/ai_api_service.dart';
 import '../../core/services/atlas_package_service.dart';
 import '../../core/services/model_loader.dart';
 import '../../shared/widgets/widgets.dart';
@@ -406,7 +407,9 @@ class _AnalyticsSettingsScreenState
   Map<String, dynamic> _packageMeta = {};
   String? _packageDir;
   final _apiKeyCtrl = TextEditingController();
+  final _geminiKeyCtrl = TextEditingController();
   bool _showApiKey = false;
+  bool _showGeminiKey = false;
 
   @override
   void initState() {
@@ -419,6 +422,7 @@ class _AnalyticsSettingsScreenState
   @override
   void dispose() {
     _apiKeyCtrl.dispose();
+    _geminiKeyCtrl.dispose();
     super.dispose();
   }
 
@@ -442,8 +446,10 @@ class _AnalyticsSettingsScreenState
   Future<void> _loadApiKey() async {
     final db = ref.read(databaseProvider);
     final key = await db.getSetting('openrouter_api_key');
+    final geminiKey = await db.getSetting('gemini_api_key');
     if (!mounted) return;
     _apiKeyCtrl.text = key ?? '';
+    _geminiKeyCtrl.text = geminiKey ?? '';
   }
 
   Future<void> _saveApiKey() async {
@@ -452,6 +458,15 @@ class _AnalyticsSettingsScreenState
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('OpenRouter API key saved')),
+    );
+  }
+
+  Future<void> _saveGeminiKey() async {
+    final key = _geminiKeyCtrl.text.trim();
+    await ref.read(databaseProvider).setSetting('gemini_api_key', key);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Gemini API key saved')),
     );
   }
 
@@ -715,8 +730,8 @@ class _AnalyticsSettingsScreenState
                 Expanded(
                   child: _AiModeCard(
                     icon: Icons.cloud_outlined,
-                    label: 'OpenRouter',
-                    sublabel: 'Cloud API\nRequires internet',
+                    label: 'Gemini API',
+                    sublabel: 'Google AI Studio\nCloud API',
                     active: aiMode == AiMode.api,
                     statusColor:
                         aiMode == AiMode.api ? Colors.green : Colors.grey,
@@ -768,7 +783,7 @@ class _AnalyticsSettingsScreenState
               ),
             ),
           ),
-          const _SettingsSectionTitle(title: 'OpenRouter API'),
+          _SettingsSectionTitle(title: '$kPrimaryAiProviderName API'),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: TextField(
@@ -776,9 +791,9 @@ class _AnalyticsSettingsScreenState
               obscureText: !_showApiKey,
               autocorrect: false,
               enableSuggestions: false,
-              decoration: InputDecoration(
-                labelText: 'OpenRouter API Key',
-                helperText: 'Get your free key at openrouter.ai',
+                decoration: InputDecoration(
+                labelText: '$kPrimaryAiProviderName API Key',
+                helperText: 'Get your key from Google AI Studio',
                 suffixIcon: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -799,6 +814,41 @@ class _AnalyticsSettingsScreenState
                 ),
               ),
               onSubmitted: (_) => _saveApiKey(),
+            ),
+          ),
+          _SettingsSectionTitle(title: '$kFallbackAiProviderName API'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: TextField(
+              controller: _geminiKeyCtrl,
+              obscureText: !_showGeminiKey,
+              autocorrect: false,
+              enableSuggestions: false,
+                decoration: InputDecoration(
+                labelText: '$kFallbackAiProviderName API Key',
+                helperText: 'Get a free key at openrouter.ai',
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: _showGeminiKey ? 'Hide key' : 'Show key',
+                      icon: Icon(
+                        _showGeminiKey
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                      ),
+                      onPressed: () =>
+                          setState(() => _showGeminiKey = !_showGeminiKey),
+                    ),
+                    IconButton(
+                      tooltip: 'Save key',
+                      icon: const Icon(Icons.save_outlined),
+                      onPressed: _saveGeminiKey,
+                    ),
+                  ],
+                ),
+              ),
+              onSubmitted: (_) => _saveGeminiKey(),
             ),
           ),
           const _SettingsSectionTitle(title: 'Search'),
@@ -888,7 +938,7 @@ class _AnalyticsSettingsScreenState
             leading: Icon(Icons.lock_outline),
             title: Text('Privacy'),
             subtitle: Text(
-              'All data is stored locally on your device. Nothing is sent to any server.',
+              'All data is stored locally on your device. Nothing is sent to any server unless Gemini API or OpenRouter fallback mode is active.',
             ),
           ),
           const SizedBox(height: 32),

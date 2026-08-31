@@ -233,6 +233,9 @@ PENDRIVE/
 # Plug in the USB drive
 cd "/run/media/$(whoami)/UBUNTU 26_0"
 ./run_atlas.sh
+
+
+bash ./run_atlas.sh
 ```
 
 Atlas should open the USB package automatically.
