@@ -15,7 +15,8 @@ class ModelInstaller {
           .whereType<File>()
           .where((f) =>
               f.path.endsWith('.task') ||
-              f.path.endsWith('.bin'))
+              f.path.endsWith('.bin') ||
+              f.path.endsWith('.gguf'))
           .toList();
 
       if (models.isEmpty) return null;

@@ -87,8 +87,4 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/models/gemma/config.json
     - assets/models/gemma/metadata.json
-    - assets/models/gemma/tokenizer.json
-    - assets/icons/
-    - assets/animations/

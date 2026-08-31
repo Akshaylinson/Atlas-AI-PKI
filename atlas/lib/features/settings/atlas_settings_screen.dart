@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/providers/providers.dart';
 import '../../core/services/atlas_package_service.dart';
+import '../../core/services/atlas_storage.dart';
 import '../search/search_screen.dart';
 import '../package/package_setup_screen.dart';
 
@@ -22,6 +23,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _loadingStatus = '';
   Map<String, dynamic> _packageMeta = {};
   String? _packageDir;
+  List<String> _validationIssues = [];
+  String _storageSize = '';
 
   @override
   void initState() {
@@ -33,7 +36,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _loadPackageInfo() async {
     final meta = await AtlasPackageService.getPackageMeta();
     final dir  = await AtlasPackageService.getActivePackageDir();
-    setState(() { _packageMeta = meta; _packageDir = dir; });
+    final validation = await AtlasPackageService.validateActivePackage();
+    final size = dir != null ? await _calcDirSize(dir) : '';
+    setState(() {
+      _packageMeta = meta;
+      _packageDir = dir;
+      _validationIssues = validation.issues;
+      _storageSize = size;
+    });
+  }
+
+  String _fmtBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+    return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(2)} GB';
+  }
+
+  Future<String> _calcDirSize(String dirPath) async {
+    try {
+      int total = 0;
+      await for (final entity in Directory(dirPath).list(recursive: true, followLinks: false)) {
+        if (entity is File) total += await entity.length();
+      }
+      return _fmtBytes(total);
+    } catch (_) {
+      return 'unknown';
+    }
   }
 
   Future<void> _loadModelPath() async {
@@ -83,7 +112,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     setState(() {
       _loadingModel = true;
-      _loadingStatus = 'Copying model (${(srcSize / 1024 / 1024).toStringAsFixed(0)} MB)�';
+      _loadingStatus = 'Copying model (${(srcSize / 1024 / 1024).toStringAsFixed(0)} MB)�';
     });
 
     final String destPath;
@@ -106,7 +135,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
 
-    setState(() => _loadingStatus = 'Loading model into memory�');
+    setState(() => _loadingStatus = 'Loading model into memory�');
     final db = ref.read(databaseProvider);
     await db.setSetting('gemma_model_path', destPath);
     await ref.read(gemmaServiceProvider.notifier).loadModel(destPath);
@@ -306,13 +335,43 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ListTile(
               leading: const Icon(Icons.folder_special_outlined),
               title: Text(_packageMeta['name'] as String? ?? 'Unknown'),
-              subtitle: Text(
-                _packageDir ?? '',
-                style: const TextStyle(fontSize: 11),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _packageDir ?? '',
+                    style: const TextStyle(fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (_storageSize.isNotEmpty)
+                    Text('Total size: $_storageSize', style: const TextStyle(fontSize: 11)),
+                  if (_validationIssues.isNotEmpty)
+                    Text(
+                      '⚠ ${_validationIssues.length} issue(s)',
+                      style: const TextStyle(fontSize: 11, color: Colors.orange),
+                    )
+                  else
+                    const Text('✓ Package valid', style: TextStyle(fontSize: 11, color: Colors.green)),
+                ],
               ),
+              isThreeLine: true,
             ),
+          ListTile(
+            leading: const Icon(Icons.verified_outlined),
+            title: const Text('Validate Package'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              await _loadPackageInfo();
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(_validationIssues.isEmpty
+                    ? 'Package is valid'
+                    : 'Issues: ${_validationIssues.join(', ')}'),
+                backgroundColor: _validationIssues.isEmpty ? Colors.green : Colors.orange,
+              ));
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.upload_outlined),
             title: const Text('Export Package'),
@@ -347,6 +406,43 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 style: TextStyle(color: Colors.red)),
             subtitle: const Text('Permanently delete everything'),
             onTap: _clearAllData,
+          ),
+
+          // Host Capabilities
+          _SectionTitle(title: 'Host Capabilities'),
+          Consumer(
+            builder: (context, ref, _) {
+              final capAsync = ref.watch(hostCapabilityProvider);
+              return capAsync.when(
+                loading: () => const ListTile(
+                  leading: Icon(Icons.memory_outlined),
+                  title: Text('Detecting host...'),
+                ),
+                error: (_, __) => const ListTile(
+                  leading: Icon(Icons.memory_outlined),
+                  title: Text('Host detection unavailable'),
+                ),
+                data: (cap) => Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.memory_outlined),
+                      title: Text('${cap.os} / ${cap.architecture}'),
+                      subtitle: Text(
+                        '${cap.cpuCores} CPU cores'
+                        '${cap.ramGb > 0 ? ' · ${cap.ramGb.toStringAsFixed(1)} GB RAM' : ''}'
+                        '${cap.gpuAvailable ? ' · GPU: ${cap.gpuType}' : ''}',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.smart_toy_outlined),
+                      title: const Text('AI Runtime'),
+                      subtitle: Text(cap.aiRuntime, style: const TextStyle(fontSize: 11)),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
 
           // About

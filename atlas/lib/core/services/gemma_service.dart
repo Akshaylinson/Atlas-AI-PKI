@@ -1,8 +1,8 @@
 import '../database/app_database.dart';
 import '../models/models.dart';
 import 'atlas_package_service.dart';
+import 'atlas_ai_runtime.dart';
 import 'decision_intelligence.dart';
-import 'model_loader.dart';
 import 'retrieval_engine.dart';
 import '../../shared/utils/utils.dart';
 
@@ -21,7 +21,7 @@ class GemmaService {
   final AppDatabase _db;
   final RetrievalEngine _retrieval;
   final DecisionIntelligenceEngine _decisionIntelligence;
-  final ModelLoader _loader;
+  late final AtlasAIRuntime _runtime;
 
   final Map<String, Map<String, dynamic>> _sessionMemory = {};
   String? _activeEntityId;
@@ -29,18 +29,18 @@ class GemmaService {
   GemmaService(this._db)
       : _retrieval = RetrievalEngine(_db),
         _decisionIntelligence = DecisionIntelligenceEngine(_db),
-        _loader = ModelLoader();
+        _runtime = FlutterGemmaRuntime();
 
-  bool get isModelLoaded => _loader.isLoaded;
-  bool get isModelLoading => _loader.isLoading;
-  String? get modelLoadError => _loader.loadError;
+  bool get isModelLoaded => _runtime.isLoaded;
+  bool get isModelLoading => _runtime.isLoading;
+  String? get modelLoadError => _runtime.loadError;
 
   Future<bool> loadModel(String installDir) async {
     final resolvedPath = await AtlasPackageService.resolvePath(installDir);
-    return _loader.load(resolvedPath);
+    return _runtime.loadModel(resolvedPath);
   }
 
-  Future<String> generateRaw(String prompt) => _loader.generate(prompt);
+  Future<String> generateRaw(String prompt) => _runtime.generate(prompt);
 
   void clearSession() {
     _sessionMemory.clear();

@@ -11,6 +11,7 @@ import '../services/file_storage_service.dart';
 import '../services/model_installer.dart';
 import '../services/model_loader.dart';
 import '../services/openrouter_service.dart';
+import '../services/host_capability.dart';
 
 final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.system);
 
@@ -108,6 +109,10 @@ final aiModeProvider = StateNotifierProvider<_AiModeNotifier, AiMode>((ref) {
 
 final fileStorageProvider = Provider<FileStorageService>((ref) {
   return FileStorageService();
+});
+
+final hostCapabilityProvider = FutureProvider<HostCapabilityProfile>((ref) {
+  return HostCapabilityProfile.detect();
 });
 
 // ── Entity Providers ──────────────────────────────────────────────────────────
