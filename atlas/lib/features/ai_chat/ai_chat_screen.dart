@@ -1,7 +1,7 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers/providers.dart';
-import '../../shared/utils/utils.dart';
+import 'package:atlas/shared/utils/utils.dart';
 
 class AIChatScreen extends ConsumerStatefulWidget {
   const AIChatScreen({super.key});
@@ -110,19 +110,20 @@ class _AIChatScreenState extends ConsumerState<AIChatScreen> {
           children: [
             Text('Atlas answers from your local knowledge base.'),
             SizedBox(height: 8),
-            Text('â€¢ All processing happens on-device'),
-            Text('â€¢ No data leaves your phone'),
-            Text('â€¢ AI only reasons over your recorded evidence'),
-            Text('â€¢ AI never invents statistics'),
+            Text('• Local processing uses Gemma .task / .bin models'),
+            Text('• OpenRouter is available when cloud inference is needed'),
+            Text('• AI only reasons over your recorded evidence'),
+            Text('• AI never invents statistics'),
             SizedBox(height: 12),
-            Text('To enable full AI: place a Gemma GGUF model file in the app\'s models folder and configure the path in Settings.',
-                style: TextStyle(fontSize: 12)),
+            Text(
+              'To enable local AI, place a Gemma model file in the app\'s models folder and select Local AI in Settings.',
+              style: TextStyle(fontSize: 12),
+            ),
           ],
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK')),
+              onPressed: () => Navigator.pop(context), child: const Text('OK')),
         ],
       ),
     );
@@ -233,26 +234,47 @@ class _ChatComposer extends StatelessWidget {
   }
 }
 
-// Persistent AppBar toggle for switching between KB-only and API-assisted AI.
+// Persistent AppBar toggle cycling: off → local → api → off
 class _ModelToggle extends ConsumerWidget {
   const _ModelToggle();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(aiModeProvider);
+    final modelState = ref.watch(gemmaServiceProvider);
 
     final Color color;
-    final Widget icon;
+    final IconData iconData;
     final String label;
 
     if (mode == AiMode.api) {
       color = Colors.green;
-      icon = const Icon(Icons.cloud_done_outlined, size: 13, color: Colors.green);
-      label = 'API on';
+      iconData = Icons.cloud_done_outlined;
+      label = 'API';
+    } else if (mode == AiMode.local) {
+      if (modelState.isLoading) {
+        color = Colors.orange;
+        iconData = Icons.hourglass_top_outlined;
+        label = 'Loading…';
+      } else if (modelState.isLoaded) {
+        color = Colors.blue;
+        iconData = Icons.memory_outlined;
+        label = 'Local AI';
+      } else {
+        color = Colors.red;
+        iconData = Icons.error_outline;
+        label = 'Failed';
+      }
     } else {
-      color = Colors.orange;
-      icon = const Icon(Icons.cloud_off_outlined, size: 13, color: Colors.orange);
+      color = Colors.grey;
+      iconData = Icons.smart_toy_outlined;
       label = 'AI off';
+    }
+
+    AiMode nextMode() {
+      if (mode == AiMode.off) return AiMode.local;
+      if (mode == AiMode.local) return AiMode.api;
+      return AiMode.off;
     }
 
     return Padding(
@@ -260,9 +282,7 @@ class _ModelToggle extends ConsumerWidget {
       child: Center(
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => ref.read(aiModeProvider.notifier).set(
-                mode == AiMode.api ? AiMode.off : AiMode.api,
-              ),
+          onTap: () => ref.read(aiModeProvider.notifier).set(nextMode()),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
@@ -273,7 +293,7 @@ class _ModelToggle extends ConsumerWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                icon,
+                Icon(iconData, size: 13, color: color),
                 const SizedBox(width: 4),
                 Text(label,
                     style: TextStyle(
@@ -309,7 +329,8 @@ class _WelcomeView extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        Icon(Icons.psychology, size: 64, color: scheme.primary.withOpacity(0.3)),
+        Icon(Icons.psychology,
+            size: 64, color: scheme.primary.withOpacity(0.3)),
         const SizedBox(height: 16),
         const Text('Ask Atlas anything about your data',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
@@ -341,7 +362,8 @@ class _WelcomeView extends StatelessWidget {
                       Icon(Icons.lightbulb_outline,
                           size: 16, color: scheme.primary),
                       const SizedBox(width: 8),
-                      Expanded(child: Text(s, style: const TextStyle(fontSize: 13))),
+                      Expanded(
+                          child: Text(s, style: const TextStyle(fontSize: 13))),
                       const Icon(Icons.arrow_forward_ios, size: 12),
                     ],
                   ),
@@ -409,8 +431,7 @@ class _MessageBubble extends StatelessWidget {
                 Text(
                   formatRelative(message.timestamp),
                   style: TextStyle(
-                      fontSize: 10,
-                      color: scheme.onSurface.withOpacity(0.4)),
+                      fontSize: 10, color: scheme.onSurface.withOpacity(0.4)),
                 ),
                 // Evidence context chip
                 if (!isUser && message.context != null)
@@ -484,8 +505,7 @@ class _SmallChip extends StatelessWidget {
         children: [
           Icon(icon, size: 10, color: scheme.primary),
           const SizedBox(width: 3),
-          Text(label,
-              style: TextStyle(fontSize: 10, color: scheme.primary)),
+          Text(label, style: TextStyle(fontSize: 10, color: scheme.primary)),
         ],
       ),
     );
@@ -576,4 +596,3 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
     );
   }
 }
-

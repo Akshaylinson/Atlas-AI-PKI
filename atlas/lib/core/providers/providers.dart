@@ -15,7 +15,7 @@ import '../services/host_capability.dart';
 
 final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.system);
 
-enum AiMode { off, api }
+enum AiMode { off, local, api }
 
 // ── Core Services ─────────────────────────────────────────────────────────────
 
@@ -69,11 +69,14 @@ class GemmaServiceNotifier extends StateNotifier<_ModelState> {
   Future<void> loadModel(String path) async {
     state = const _ModelState(isLoading: true);
     final ok = await service.loadModel(path);
-    if (ok) {
-      state = const _ModelState(isLoaded: true);
-    } else {
-      state = _ModelState(error: service.modelLoadError ?? 'Unknown error');
-    }
+    state = ok
+        ? const _ModelState(isLoaded: true)
+        : _ModelState(error: service.modelLoadError ?? 'Unknown error');
+  }
+
+  Future<void> unloadModel() async {
+    await service.disposeRuntime();
+    state = const _ModelState();
   }
 
   bool get isLoaded => state.isLoaded;
@@ -94,12 +97,33 @@ class _AiModeNotifier extends StateNotifier<AiMode> {
 
   Future<void> _load() async {
     final raw = await _ref.read(databaseProvider).getSetting('ai_mode');
-    if (mounted) state = (raw == 'api') ? AiMode.api : AiMode.off;
+    if (!mounted) return;
+    final mode = raw == 'api' ? AiMode.api : raw == 'local' ? AiMode.local : AiMode.off;
+    state = mode;
+    if (mode == AiMode.local) await _loadLocalModel();
   }
 
   Future<void> set(AiMode mode) async {
+    final prev = state;
     state = mode;
-    await _ref.read(databaseProvider).setSetting('ai_mode', mode == AiMode.api ? 'api' : 'off');
+    await _ref.read(databaseProvider).setSetting(
+        'ai_mode', mode == AiMode.api ? 'api' : mode == AiMode.local ? 'local' : 'off');
+    if (mode == AiMode.local && prev != AiMode.local) {
+      await _loadLocalModel();
+    } else if (mode != AiMode.local && prev == AiMode.local) {
+      await _ref.read(gemmaServiceProvider.notifier).unloadModel();
+    }
+  }
+
+  Future<void> _loadLocalModel() async {
+    final db = _ref.read(databaseProvider);
+    final savedPath = await db.getSetting('gemma_model_path');
+    final path = (savedPath?.isNotEmpty == true)
+        ? savedPath!
+        : await _ref.read(modelInstallerProvider).ensureInstalled();
+    if (path != null && path.isNotEmpty) {
+      await _ref.read(gemmaServiceProvider.notifier).loadModel(path);
+    }
   }
 }
 
@@ -246,23 +270,33 @@ class AIChatNotifier extends StateNotifier<List<ChatMessage>> {
       final response = await _gemma.query(text, history: history);
       String finalAnswer = response.answer;
 
-      if (mode == AiMode.api) {
+      if (mode == AiMode.local) {
+        final isLoaded = _ref.read(gemmaServiceProvider.notifier).isLoaded;
+        if (!isLoaded) {
+          finalAnswer = 'Local AI model is not loaded yet. Toggle AI off and on again to reload.';
+        } else {
+          final hasKbData = response.context.isNotEmpty &&
+              ((response.context['entities'] as List?)?.isNotEmpty == true ||
+               (response.context['events'] as List?)?.isNotEmpty == true ||
+               (response.context['patterns'] as List?)?.isNotEmpty == true);
+          final prompt = hasKbData
+              ? 'You are Atlas, a personal knowledge assistant. Answer using ONLY the evidence below. Be concise.\n\nEvidence:\n${response.answer}\n\nQuestion: $text'
+              : 'You are Atlas, a personal knowledge assistant. The user asked: "$text"\n\nKnowledge base result: "${response.answer}"\n\nRespond helpfully.';
+          finalAnswer = await _gemma.generateRaw(prompt);
+        }
+      } else if (mode == AiMode.api) {
         final apiKey = await _ref.read(databaseProvider).getSetting('openrouter_api_key');
         if (apiKey == null || apiKey.trim().isEmpty) {
           finalAnswer = 'OpenRouter API key not set. Go to Settings and add your API key.';
         } else {
           final openrouter = OpenRouterService(apiKey);
-
-          // Check if KB actually found real data or just returned a no-match message
           final hasKbData = response.context.isNotEmpty &&
               ((response.context['entities'] as List?)?.isNotEmpty == true ||
                (response.context['events'] as List?)?.isNotEmpty == true ||
                (response.context['patterns'] as List?)?.isNotEmpty == true);
-
           final prompt = hasKbData
               ? 'You are Atlas, a personal knowledge assistant. Answer the user question using ONLY the evidence below. Be concise and natural.\n\nEvidence:\n${response.answer}\n\nQuestion: $text'
               : 'You are Atlas, a personal knowledge assistant. The user asked: "$text"\n\nThe knowledge base returned: "${response.answer}"\n\nRespond helpfully. If the entity or data is not found, say so clearly and suggest the user verify the name or add data first.';
-
           finalAnswer = await openrouter.chat(prompt);
         }
       }

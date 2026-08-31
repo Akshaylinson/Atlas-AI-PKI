@@ -25,7 +25,7 @@ abstract class AtlasStorageProvider {
   }
 }
 
-class AtlasPackageStorageProvider implements AtlasStorageProvider {
+class AtlasPackageStorageProvider extends AtlasStorageProvider {
   @override
   final String packageRoot;
 

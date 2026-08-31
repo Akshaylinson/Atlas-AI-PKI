@@ -5,10 +5,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/providers/providers.dart';
 import '../../core/services/atlas_package_service.dart';
-import '../../core/services/atlas_storage.dart';
+import '../../core/services/model_loader.dart';
 import '../search/search_screen.dart';
 import '../package/package_setup_screen.dart';
-
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -25,25 +24,47 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String? _packageDir;
   List<String> _validationIssues = [];
   String _storageSize = '';
+  final _apiKeyCtrl = TextEditingController();
+  bool _showApiKey = false;
 
   @override
   void initState() {
     super.initState();
     _loadModelPath();
     _loadPackageInfo();
+    _loadApiKey();
+  }
+
+  @override
+  void dispose() {
+    _apiKeyCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadPackageInfo() async {
     final meta = await AtlasPackageService.getPackageMeta();
-    final dir  = await AtlasPackageService.getActivePackageDir();
+    final dir = await AtlasPackageService.getActivePackageDir();
     final validation = await AtlasPackageService.validateActivePackage();
     final size = dir != null ? await _calcDirSize(dir) : '';
+    if (!mounted) return;
     setState(() {
       _packageMeta = meta;
       _packageDir = dir;
       _validationIssues = validation.issues;
       _storageSize = size;
     });
+  }
+
+  Future<void> _loadModelPath() async {
+    final path = await ref.read(databaseProvider).getSetting('gemma_model_path');
+    if (!mounted) return;
+    setState(() => _modelPath = path);
+  }
+
+  Future<void> _loadApiKey() async {
+    final key = await ref.read(databaseProvider).getSetting('openrouter_api_key');
+    if (!mounted) return;
+    _apiKeyCtrl.text = key ?? '';
   }
 
   String _fmtBytes(int bytes) {
@@ -56,8 +77,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<String> _calcDirSize(String dirPath) async {
     try {
       int total = 0;
-      await for (final entity in Directory(dirPath).list(recursive: true, followLinks: false)) {
-        if (entity is File) total += await entity.length();
+      await for (final e in Directory(dirPath).list(recursive: true, followLinks: false)) {
+        if (e is File) total += await e.length();
       }
       return _fmtBytes(total);
     } catch (_) {
@@ -65,116 +86,93 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  Future<void> _loadModelPath() async {
-    final db = ref.read(databaseProvider);
-    final path = await db.getSetting('gemma_model_path');
-    setState(() => _modelPath = path);
-  }
+  // ── Local Gemma model ──────────────────────────────────────────────────────
 
   Future<void> _pickModel() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.any,
-      allowMultiple: false,
-      withData: false,
-      withReadStream: false,
-    );
+    final result = await FilePicker.platform.pickFiles(type: FileType.any, withData: false);
     if (result == null || result.files.isEmpty) return;
-
     final pickedPath = result.files.first.path;
     if (pickedPath == null) return;
 
-    final ext = pickedPath.toLowerCase();
-    if (!supportedGemmaModelExtensions.any(ext.endsWith)) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Unsupported model format. Please choose a .task or .bin file.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+    if (!supportedGemmaModelExtensions.any(pickedPath.toLowerCase().endsWith)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Unsupported format. Choose a Gemma .task or .bin file.'),
+        backgroundColor: Colors.red,
+      ));
       return;
     }
 
-    final srcFile = File(pickedPath);
-    final srcSize = await srcFile.length();
+    final srcSize = await File(pickedPath).length();
     if (srcSize < 1024 * 1024) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('File too small (${srcSize} bytes) - not a valid model file'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('File too small ($srcSize bytes) — not a valid model.'),
+        backgroundColor: Colors.red,
+      ));
       return;
     }
 
-    setState(() {
-      _loadingModel = true;
-      _loadingStatus = 'Copying model (${(srcSize / 1024 / 1024).toStringAsFixed(0)} MB)�';
-    });
+    setState(() { _loadingModel = true; _loadingStatus = 'Copying model (${(srcSize / 1024 / 1024).toStringAsFixed(0)} MB)…'; });
 
-    final String destPath;
+    String destPath;
     try {
       destPath = await AtlasPackageService.installModelFile(pickedPath);
-      final destSize = await File(destPath).length();
-      if (destSize != srcSize) {
-        throw Exception('Copy incomplete: $destSize / $srcSize bytes');
-      }
+      if (await File(destPath).length() != srcSize) throw Exception('Copy incomplete');
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _loadingModel = false;
-          _loadingStatus = '';
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to copy model: $e'), backgroundColor: Colors.red),
-        );
-      }
+      if (!mounted) return;
+      setState(() { _loadingModel = false; _loadingStatus = ''; });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copy failed: $e'), backgroundColor: Colors.red));
       return;
     }
 
-    setState(() => _loadingStatus = 'Loading model into memory�');
-    final db = ref.read(databaseProvider);
-    await db.setSetting('gemma_model_path', destPath);
+    setState(() => _loadingStatus = 'Loading model into memory…');
+    await ref.read(databaseProvider).setSetting('gemma_model_path', destPath);
     await ref.read(gemmaServiceProvider.notifier).loadModel(destPath);
+    if (!mounted) return;
+    setState(() { _modelPath = destPath; _loadingModel = false; _loadingStatus = ''; });
 
-    setState(() {
-      _modelPath = destPath;
-      _loadingModel = false;
-      _loadingStatus = '';
-    });
+    final s = ref.read(gemmaServiceProvider);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(s.isLoaded ? 'Gemma model loaded ✓' : 'Load failed: ${s.error ?? 'unknown'}'),
+      backgroundColor: s.isLoaded ? Colors.green : Colors.red,
+    ));
+  }
 
-    if (mounted) {
-      final state = ref.read(gemmaServiceProvider);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(state.isLoaded
-              ? 'AI model loaded successfully'
-              : 'Failed to load model: ${state.error ?? 'Unknown error'}'),
-          backgroundColor: state.isLoaded ? Colors.green : Colors.red,
-          duration: const Duration(seconds: 6),
-        ),
-      );
+  Future<void> _unloadModel() async {
+    await ref.read(gemmaServiceProvider.notifier).unloadModel();
+    await ref.read(databaseProvider).setSetting('gemma_model_path', '');
+    if (!mounted) return;
+    setState(() => _modelPath = null);
+    // If local mode was active, switch off
+    if (ref.read(aiModeProvider) == AiMode.local) {
+      await ref.read(aiModeProvider.notifier).set(AiMode.off);
     }
   }
+
+  // ── OpenRouter API ─────────────────────────────────────────────────────────
+
+  Future<void> _saveApiKey() async {
+    final key = _apiKeyCtrl.text.trim();
+    await ref.read(databaseProvider).setSetting('openrouter_api_key', key);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('API key saved')),
+    );
+  }
+
+  // ── Package actions ────────────────────────────────────────────────────────
 
   Future<void> _exportPackage() async {
     setState(() => _loadingStatus = 'Exporting…');
     try {
       final path = await AtlasPackageService.exportPackage();
-      await SharePlus.instance.share(
-        ShareParams(files: [XFile(path)], text: 'Atlas Package Export'),
-      );
+      await SharePlus.instance.share(ShareParams(files: [XFile(path)], text: 'Atlas Package Export'));
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red));
     } finally {
-      setState(() => _loadingStatus = '');
+      if (mounted) setState(() => _loadingStatus = '');
     }
   }
 
@@ -186,41 +184,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     setState(() => _loadingStatus = 'Importing…');
     try {
       await AtlasPackageService.importPackage(path);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Package imported. Restart the app to apply.')),
-        );
-        await _loadPackageInfo();
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Package imported. Restart to apply.')));
+      await _loadPackageInfo();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Import failed: $e'), backgroundColor: Colors.red),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import failed: $e'), backgroundColor: Colors.red));
     } finally {
-      setState(() => _loadingStatus = '');
+      if (mounted) setState(() => _loadingStatus = '');
     }
   }
 
-  Future<void> _switchPackage() async {
-    if (!mounted) return;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const PackageSetupScreen()),
-    );
-  }
-
   Future<void> _clearAllData() async {
-    final confirmed = await showDialog<bool>(
+    final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Clear All Data?'),
-        content: const Text(
-            'This will permanently delete ALL entities, events, patterns, and statistics. This cannot be undone.'),
+        content: const Text('Permanently deletes ALL entities, events, patterns and statistics. Cannot be undone.'),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
@@ -229,130 +211,175 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ],
       ),
     );
-    if (confirmed != true) return;
-
+    if (ok != true) return;
     final db = ref.read(databaseProvider);
-    final entities = await db.getAllEntities();
-    final events = await db.getAllEvents();
-    for (final e in entities) { await db.deleteEntity(e.id); }
-    for (final e in events) { await db.deleteEvent(e.id); }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('All data cleared')),
-      );
-    }
+    for (final e in await db.getAllEntities()) await db.deleteEntity(e.id);
+    for (final e in await db.getAllEvents()) await db.deleteEvent(e.id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All data cleared')));
   }
 
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeModeProvider);
+    final aiMode = ref.watch(aiModeProvider);
+    final modelState = ref.watch(gemmaServiceProvider);
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-      ),
+      appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
-          // Appearance
+
+          // ── Appearance ───────────────────────────────────────────────────
           _SectionTitle(title: 'Appearance'),
           ListTile(
             leading: const Icon(Icons.brightness_6_outlined),
             title: const Text('Theme'),
             trailing: SegmentedButton<ThemeMode>(
               segments: const [
-                ButtonSegment(
-                    value: ThemeMode.light,
-                    icon: Icon(Icons.light_mode, size: 16)),
-                ButtonSegment(
-                    value: ThemeMode.system,
-                    icon: Icon(Icons.brightness_auto, size: 16)),
-                ButtonSegment(
-                    value: ThemeMode.dark,
-                    icon: Icon(Icons.dark_mode, size: 16)),
+                ButtonSegment(value: ThemeMode.light, icon: Icon(Icons.light_mode, size: 16)),
+                ButtonSegment(value: ThemeMode.system, icon: Icon(Icons.brightness_auto, size: 16)),
+                ButtonSegment(value: ThemeMode.dark, icon: Icon(Icons.dark_mode, size: 16)),
               ],
               selected: {themeMode},
-              onSelectionChanged: (s) =>
-                  ref.read(themeModeProvider.notifier).state = s.first,
+              onSelectionChanged: (s) => ref.read(themeModeProvider.notifier).state = s.first,
             ),
           ),
 
-          // AI Model
-          _SectionTitle(title: 'AI Model (Gemma)'),
+          // ── AI Mode ──────────────────────────────────────────────────────
+          _SectionTitle(title: 'AI Mode'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _AiModeCard(
+                    icon: Icons.memory_outlined,
+                    label: 'Local AI',
+                    sublabel: 'Gemma on-device\n.task / .bin model',
+                    active: aiMode == AiMode.local,
+                    statusColor: aiMode == AiMode.local
+                        ? (modelState.isLoading ? Colors.orange : modelState.isLoaded ? Colors.green : Colors.red)
+                        : Colors.grey,
+                    statusLabel: aiMode == AiMode.local
+                        ? (modelState.isLoading ? 'Loading…' : modelState.isLoaded ? 'Ready' : 'Not loaded')
+                        : 'Off',
+                    onTap: () => ref.read(aiModeProvider.notifier).set(
+                      aiMode == AiMode.local ? AiMode.off : AiMode.local,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _AiModeCard(
+                    icon: Icons.cloud_outlined,
+                    label: 'OpenRouter',
+                    sublabel: 'Cloud API\nRequires internet',
+                    active: aiMode == AiMode.api,
+                    statusColor: aiMode == AiMode.api ? Colors.green : Colors.grey,
+                    statusLabel: aiMode == AiMode.api ? 'Active' : 'Off',
+                    onTap: () => ref.read(aiModeProvider.notifier).set(
+                      aiMode == AiMode.api ? AiMode.off : AiMode.api,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ── Local Gemma model ────────────────────────────────────────────
+          _SectionTitle(title: 'Local Gemma Model'),
           ListTile(
-            leading: const Icon(Icons.psychology_outlined),
+            leading: Icon(Icons.psychology_outlined,
+                color: modelState.isLoaded ? Colors.green : scheme.onSurface.withOpacity(0.5)),
             title: const Text('Model File'),
             subtitle: Text(
-              _modelPath ?? 'No model loaded',
+              _modelPath != null && _modelPath!.isNotEmpty
+                  ? _modelPath!.split('/').last
+                  : 'No model — download a Gemma .task or .bin file',
               style: TextStyle(
-                  fontSize: 12,
-                  color: _modelPath != null ? Colors.green : Colors.orange),
+                fontSize: 12,
+                color: _modelPath != null && _modelPath!.isNotEmpty ? Colors.green : Colors.orange,
+              ),
             ),
             trailing: _loadingModel
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2)),
-                      if (_loadingStatus.isNotEmpty)
-                        Text(_loadingStatus,
-                            style: const TextStyle(fontSize: 9)),
-                    ],
-                  )
-                : TextButton(
-                    onPressed: _pickModel,
-                    child: const Text('Browse'),
-                  ),
+                ? Column(mainAxisSize: MainAxisSize.min, children: [
+                    const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                    if (_loadingStatus.isNotEmpty) Text(_loadingStatus, style: const TextStyle(fontSize: 9)),
+                  ])
+                : Row(mainAxisSize: MainAxisSize.min, children: [
+                    TextButton(onPressed: _pickModel, child: const Text('Browse')),
+                    if (_modelPath != null && _modelPath!.isNotEmpty)
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                        tooltip: 'Unload model',
+                        onPressed: _unloadModel,
+                      ),
+                  ]),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
             child: Text(
-              'Select a Gemma .task or .bin model file to enable full AI reasoning.',
-              style: TextStyle(
-                  fontSize: 12,
-                  color: scheme.onSurface.withOpacity(0.5)),
+              'Download: kaggle.com/models/google/gemma/frameworks/tfLite\n'
+              'Recommended: gemma-2b-it-gpu-int4.bin (~1.3 GB)',
+              style: TextStyle(fontSize: 11, color: scheme.onSurface.withOpacity(0.45)),
             ),
           ),
 
-          // Search
+          // ── OpenRouter API ───────────────────────────────────────────────
+          _SectionTitle(title: 'OpenRouter API'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: TextField(
+              controller: _apiKeyCtrl,
+              obscureText: !_showApiKey,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: InputDecoration(
+                labelText: 'API Key',
+                helperText: 'Get a free key at openrouter.ai',
+                suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
+                  IconButton(
+                    icon: Icon(_showApiKey ? Icons.visibility_off : Icons.visibility),
+                    onPressed: () => setState(() => _showApiKey = !_showApiKey),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.save_outlined),
+                    tooltip: 'Save',
+                    onPressed: _saveApiKey,
+                  ),
+                ]),
+              ),
+              onSubmitted: (_) => _saveApiKey(),
+            ),
+          ),
+
+          // ── Search ───────────────────────────────────────────────────────
           _SectionTitle(title: 'Search'),
           ListTile(
             leading: const Icon(Icons.search),
             title: const Text('Open Search'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SearchScreen()),
-            ),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())),
           ),
 
-          // Atlas Package
+          // ── Atlas Package ────────────────────────────────────────────────
           _SectionTitle(title: 'Atlas Package'),
           if (_packageMeta.isNotEmpty)
             ListTile(
               leading: const Icon(Icons.folder_special_outlined),
-              title: Text(_packageMeta['name'] as String? ?? 'Unknown'),
+              title: Text(_packageMeta['package_id'] as String? ?? _packageMeta['name'] as String? ?? 'Unknown'),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _packageDir ?? '',
-                    style: const TextStyle(fontSize: 11),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  Text(_packageDir ?? '', style: const TextStyle(fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
                   if (_storageSize.isNotEmpty)
-                    Text('Total size: $_storageSize', style: const TextStyle(fontSize: 11)),
+                    Text('Size: $_storageSize', style: const TextStyle(fontSize: 11)),
                   if (_validationIssues.isNotEmpty)
-                    Text(
-                      '⚠ ${_validationIssues.length} issue(s)',
-                      style: const TextStyle(fontSize: 11, color: Colors.orange),
-                    )
+                    Text('⚠ ${_validationIssues.length} issue(s)', style: const TextStyle(fontSize: 11, color: Colors.orange))
                   else
-                    const Text('✓ Package valid', style: TextStyle(fontSize: 11, color: Colors.green)),
+                    const Text('✓ Valid', style: TextStyle(fontSize: 11, color: Colors.green)),
                 ],
               ),
               isThreeLine: true,
@@ -365,17 +392,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               await _loadPackageInfo();
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text(_validationIssues.isEmpty
-                    ? 'Package is valid'
-                    : 'Issues: ${_validationIssues.join(', ')}'),
+                content: Text(_validationIssues.isEmpty ? 'Package is valid ✓' : 'Issues: ${_validationIssues.join(', ')}'),
                 backgroundColor: _validationIssues.isEmpty ? Colors.green : Colors.orange,
               ));
             },
           ),
           ListTile(
             leading: const Icon(Icons.upload_outlined),
-            title: const Text('Export Package'),
-            subtitle: const Text('Compress & share your .atlas package'),
+            title: const Text('Export Package (.atlas)'),
             trailing: _loadingStatus == 'Exporting…'
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.chevron_right),
@@ -384,7 +408,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ListTile(
             leading: const Icon(Icons.download_outlined),
             title: const Text('Import Package'),
-            subtitle: const Text('Restore from a .atlas file'),
             trailing: _loadingStatus == 'Importing…'
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.chevron_right),
@@ -393,69 +416,59 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ListTile(
             leading: const Icon(Icons.swap_horiz_outlined),
             title: const Text('Switch Package'),
-            subtitle: const Text('Create or open a different package'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: _switchPackage,
+            onTap: () => Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const PackageSetupScreen()),
+            ),
           ),
 
-          // Data
+          // ── Data ─────────────────────────────────────────────────────────
           _SectionTitle(title: 'Data'),
           ListTile(
             leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
-            title: const Text('Clear All Data',
-                style: TextStyle(color: Colors.red)),
+            title: const Text('Clear All Data', style: TextStyle(color: Colors.red)),
             subtitle: const Text('Permanently delete everything'),
             onTap: _clearAllData,
           ),
 
-          // Host Capabilities
+          // ── Host Capabilities ─────────────────────────────────────────────
           _SectionTitle(title: 'Host Capabilities'),
-          Consumer(
-            builder: (context, ref, _) {
-              final capAsync = ref.watch(hostCapabilityProvider);
-              return capAsync.when(
-                loading: () => const ListTile(
-                  leading: Icon(Icons.memory_outlined),
-                  title: Text('Detecting host...'),
+          Consumer(builder: (context, ref, _) {
+            final capAsync = ref.watch(hostCapabilityProvider);
+            return capAsync.when(
+              loading: () => const ListTile(leading: Icon(Icons.memory_outlined), title: Text('Detecting…')),
+              error: (_, __) => const ListTile(leading: Icon(Icons.memory_outlined), title: Text('Detection unavailable')),
+              data: (cap) => Column(children: [
+                ListTile(
+                  leading: const Icon(Icons.memory_outlined),
+                  title: Text('${cap.os} / ${cap.architecture}'),
+                  subtitle: Text(
+                    '${cap.cpuCores} cores'
+                    '${cap.ramGb > 0 ? ' · ${cap.ramGb.toStringAsFixed(1)} GB RAM' : ''}'
+                    '${cap.gpuAvailable ? ' · GPU: ${cap.gpuType}' : ''}',
+                    style: const TextStyle(fontSize: 11),
+                  ),
                 ),
-                error: (_, __) => const ListTile(
-                  leading: Icon(Icons.memory_outlined),
-                  title: Text('Host detection unavailable'),
+                ListTile(
+                  leading: const Icon(Icons.smart_toy_outlined),
+                  title: const Text('AI Runtime'),
+                  subtitle: Text(cap.aiRuntime, style: const TextStyle(fontSize: 11)),
                 ),
-                data: (cap) => Column(
-                  children: [
-                    ListTile(
-                      leading: const Icon(Icons.memory_outlined),
-                      title: Text('${cap.os} / ${cap.architecture}'),
-                      subtitle: Text(
-                        '${cap.cpuCores} CPU cores'
-                        '${cap.ramGb > 0 ? ' · ${cap.ramGb.toStringAsFixed(1)} GB RAM' : ''}'
-                        '${cap.gpuAvailable ? ' · GPU: ${cap.gpuType}' : ''}',
-                        style: const TextStyle(fontSize: 11),
-                      ),
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.smart_toy_outlined),
-                      title: const Text('AI Runtime'),
-                      subtitle: Text(cap.aiRuntime, style: const TextStyle(fontSize: 11)),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
+              ]),
+            );
+          }),
 
-          // About
+          // ── About ─────────────────────────────────────────────────────────
           _SectionTitle(title: 'About'),
           const ListTile(
             leading: Icon(Icons.info_outline),
             title: Text('Atlas'),
-            subtitle: Text('Personal Intelligence Operating System\nVersion 1.0.0'),
+            subtitle: Text('Portable Personal Intelligence System\nVersion 2.0.0'),
           ),
           const ListTile(
             leading: Icon(Icons.lock_outline),
             title: Text('Privacy'),
-            subtitle: Text('All data is stored locally on your device. Nothing is sent to any server.'),
+            subtitle: Text('All data is stored locally in your Atlas Package. Nothing is sent to any server unless OpenRouter API mode is active.'),
           ),
           const SizedBox(height: 32),
         ],
@@ -464,9 +477,69 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 }
 
+// ── AI Mode Card widget ────────────────────────────────────────────────────────
+
+class _AiModeCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String sublabel;
+  final bool active;
+  final Color statusColor;
+  final String statusLabel;
+  final VoidCallback onTap;
+
+  const _AiModeCard({
+    required this.icon,
+    required this.label,
+    required this.sublabel,
+    required this.active,
+    required this.statusColor,
+    required this.statusLabel,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: active ? scheme.primaryContainer.withOpacity(0.5) : scheme.surfaceContainerHighest.withOpacity(0.4),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: active ? scheme.primary : scheme.outlineVariant.withOpacity(0.5),
+            width: active ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(icon, size: 20, color: active ? scheme.primary : scheme.onSurface.withOpacity(0.5)),
+              const Spacer(),
+              Container(
+                width: 8, height: 8,
+                decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            Text(label, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: active ? scheme.primary : scheme.onSurface)),
+            const SizedBox(height: 2),
+            Text(sublabel, style: TextStyle(fontSize: 10, color: scheme.onSurface.withOpacity(0.5))),
+            const SizedBox(height: 6),
+            Text(statusLabel, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: statusColor)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SectionTitle extends StatelessWidget {
   final String title;
-
   const _SectionTitle({required this.title});
 
   @override
@@ -485,11 +558,3 @@ class _SectionTitle extends StatelessWidget {
     );
   }
 }
-
-
-
-
-
-
-
-

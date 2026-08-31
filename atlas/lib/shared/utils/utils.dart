@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'package:intl/intl.dart';
 
 String formatDate(DateTime dt) => DateFormat('MMM d, yyyy').format(dt);
-String formatDateTime(DateTime dt) => DateFormat('MMM d, yyyy • h:mm a').format(dt);
+String formatDateTime(DateTime dt) =>
+    DateFormat('MMM d, yyyy h:mm a').format(dt);
 String formatRelative(DateTime dt) {
   final diff = DateTime.now().difference(dt);
   if (diff.inMinutes < 1) return 'Just now';

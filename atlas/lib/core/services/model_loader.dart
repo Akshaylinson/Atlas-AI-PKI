@@ -7,7 +7,9 @@ import 'package:flutter_gemma/core/message.dart';
 import 'package:flutter_gemma/core/model.dart';
 import 'package:flutter_gemma/pigeon.g.dart';
 
-const supportedGemmaModelExtensions = <String>{'.task', '.bin', '.gguf'};
+/// Supported Gemma model formats (flutter_gemma / MediaPipe only).
+/// GGUF is NOT supported here — Gemma runs via flutter_gemma on-device.
+const supportedGemmaModelExtensions = <String>{'.task', '.bin'};
 
 class ModelLoader {
   bool _loading = false;
@@ -23,13 +25,13 @@ class ModelLoader {
     _loading = true;
     _error = null;
     try {
-      final lowerPath = modelPath.toLowerCase();
-      if (!supportedGemmaModelExtensions.any(lowerPath.endsWith)) {
+      final lower = modelPath.toLowerCase();
+      if (!supportedGemmaModelExtensions.any(lower.endsWith)) {
         throw ArgumentError(
-          'Unsupported model format. Use a .gguf, .task, or .bin file.',
+          'Unsupported format. Gemma local AI requires a .task or .bin file.\n'
+          'Download from: https://www.kaggle.com/models/google/gemma/frameworks/tfLite',
         );
       }
-
       _worker ??= _GemmaWorkerClient();
       await _worker!.load(modelPath);
       _loaded = true;
@@ -45,20 +47,14 @@ class ModelLoader {
 
   Future<String> generate(String prompt) async {
     if (!_loaded) throw StateError('Model not loaded');
-    final worker = _worker;
-    if (worker == null) {
-      throw StateError('Model worker not initialized');
-    }
-    return worker.generate(prompt);
+    return _worker!.generate(prompt);
   }
 
   Future<void> dispose() async {
-    final worker = _worker;
+    final w = _worker;
     _worker = null;
     _loaded = false;
-    if (worker != null) {
-      await worker.dispose();
-    }
+    if (w != null) await w.dispose();
   }
 }
 
@@ -67,8 +63,8 @@ class _GemmaWorkerClient {
   SendPort? _commandPort;
   final ReceivePort _responsePort = ReceivePort();
   final Map<int, Completer<Object?>> _pending = {};
-  StreamSubscription<dynamic>? _responseSubscription;
-  int _nextRequestId = 0;
+  StreamSubscription<dynamic>? _sub;
+  int _nextId = 0;
   Future<void>? _startup;
 
   Future<void> _ensureStarted() {
@@ -77,88 +73,60 @@ class _GemmaWorkerClient {
   }
 
   Future<void> _start() async {
-    final rootToken = ServicesBinding.rootIsolateToken;
-    if (rootToken == null) {
-      throw StateError('Root isolate token is unavailable');
-    }
-
-    _responseSubscription = _responsePort.listen(_handleResponse);
-    final readyPort = ReceivePort();
+    final token = ServicesBinding.rootIsolateToken;
+    if (token == null) throw StateError('Root isolate token unavailable');
+    _sub = _responsePort.listen(_onResponse);
+    final ready = ReceivePort();
     _isolate = await Isolate.spawn(
-      _gemmaWorkerEntry,
-      <Object?>[
-        readyPort.sendPort,
-        _responsePort.sendPort,
-        rootToken,
-      ],
+      _workerEntry,
+      [ready.sendPort, _responsePort.sendPort, token],
       debugName: 'GemmaWorker',
     );
-    _commandPort = await readyPort.first as SendPort;
-    readyPort.close();
+    _commandPort = await ready.first as SendPort;
+    ready.close();
   }
 
-  void _handleResponse(dynamic message) {
-    if (message is! List || message.length < 3) return;
-    final requestId = message[0] as int;
-    final ok = message[1] as bool;
-    final payload = message[2];
-    final completer = _pending.remove(requestId);
-    if (completer == null) return;
-    if (ok) {
-      completer.complete(payload);
-    } else {
-      completer.completeError(StateError(payload?.toString() ?? 'Unknown error'));
-    }
+  void _onResponse(dynamic msg) {
+    if (msg is! List || msg.length < 3) return;
+    final id = msg[0] as int;
+    final ok = msg[1] as bool;
+    final payload = msg[2];
+    final c = _pending.remove(id);
+    if (c == null) return;
+    ok ? c.complete(payload) : c.completeError(StateError(payload?.toString() ?? 'error'));
   }
 
   Future<T> _send<T>(String action, [Object? payload]) async {
     await _ensureStarted();
-    final commandPort = _commandPort;
-    if (commandPort == null) {
-      throw StateError('Gemma worker is not ready');
-    }
-
-    final requestId = ++_nextRequestId;
-    final completer = Completer<Object?>();
-    _pending[requestId] = completer;
-    commandPort.send(<Object?>[requestId, action, payload]);
-
+    final id = ++_nextId;
+    final c = Completer<Object?>();
+    _pending[id] = c;
+    _commandPort!.send([id, action, payload]);
     try {
-      final result = await completer.future;
-      return result as T;
+      return await c.future as T;
     } catch (_) {
-      _pending.remove(requestId);
+      _pending.remove(id);
       rethrow;
     }
   }
 
-  Future<void> load(String modelPath) async {
-    await _send<void>('load', modelPath);
-  }
-
-  Future<String> generate(String prompt) async {
-    return _send<String>('generate', prompt);
-  }
+  Future<void> load(String path) => _send<void>('load', path);
+  Future<String> generate(String prompt) => _send<String>('generate', prompt);
 
   Future<void> dispose() async {
-    final commandPort = _commandPort;
+    final port = _commandPort;
     _commandPort = null;
     _startup = null;
-
-    if (commandPort != null) {
+    if (port != null) {
       try {
-        final requestId = ++_nextRequestId;
-        final completer = Completer<Object?>();
-        _pending[requestId] = completer;
-        commandPort.send(<Object?>[requestId, 'dispose', null]);
-        await completer.future;
-      } catch (_) {
-        // Best effort shutdown.
-      }
+        final id = ++_nextId;
+        final c = Completer<Object?>();
+        _pending[id] = c;
+        port.send([id, 'dispose', null]);
+        await c.future;
+      } catch (_) {}
     }
-
-    await _responseSubscription?.cancel();
-    _responseSubscription = null;
+    await _sub?.cancel();
     _responsePort.close();
     _isolate?.kill(priority: Isolate.immediate);
     _isolate = null;
@@ -167,108 +135,86 @@ class _GemmaWorkerClient {
 }
 
 @pragma('vm:entry-point')
-Future<void> _gemmaWorkerEntry(List<Object?> args) async {
-  final readyPort = args[0] as SendPort;
-  final responsePort = args[1] as SendPort;
-  final rootToken = args[2] as RootIsolateToken;
+Future<void> _workerEntry(List<Object?> args) async {
+  final ready = args[0] as SendPort;
+  final response = args[1] as SendPort;
+  final token = args[2] as RootIsolateToken;
+  BackgroundIsolateBinaryMessenger.ensureInitialized(token);
 
-  BackgroundIsolateBinaryMessenger.ensureInitialized(rootToken);
+  final cmd = ReceivePort();
+  final engine = _GemmaEngine();
+  ready.send(cmd.sendPort);
 
-  final commandPort = ReceivePort();
-  final engine = _GemmaWorkerEngine();
-  readyPort.send(commandPort.sendPort);
-
-  await for (final message in commandPort) {
-    if (message is! List || message.length < 3) continue;
-
-    final requestId = message[0] as int;
-    final action = message[1] as String;
-    final payload = message[2];
-
+  await for (final msg in cmd) {
+    if (msg is! List || msg.length < 3) continue;
+    final id = msg[0] as int;
+    final action = msg[1] as String;
+    final payload = msg[2];
     try {
       switch (action) {
         case 'load':
           await engine.load(payload as String);
-          responsePort.send(<Object?>[requestId, true, null]);
-          break;
+          response.send([id, true, null]);
         case 'generate':
           final text = await engine.generate(payload as String);
-          responsePort.send(<Object?>[requestId, true, text]);
-          break;
+          response.send([id, true, text]);
         case 'dispose':
           await engine.dispose();
-          responsePort.send(<Object?>[requestId, true, null]);
-          commandPort.close();
+          response.send([id, true, null]);
+          cmd.close();
           return;
         default:
-          responsePort.send(<Object?>[
-            requestId,
-            false,
-            'Unknown action: $action',
-          ]);
+          response.send([id, false, 'Unknown action: $action']);
       }
     } catch (e, st) {
-      responsePort.send(<Object?>[requestId, false, '$e\n$st']);
+      response.send([id, false, '$e\n$st']);
     }
   }
 }
 
-class _GemmaWorkerEngine {
+class _GemmaEngine {
   InferenceModel? _model;
 
-  Future<void> load(String modelPath) async {
+  Future<void> load(String path) async {
     final gemma = FlutterGemmaPlugin.instance;
-    await gemma.modelManager.setModelPath(modelPath);
-
+    await gemma.modelManager.setModelPath(path);
     await _model?.close();
-    _model = await _createModelWithFallbacks(gemma);
+    _model = await _createWithFallbacks(gemma);
   }
 
-  Future<InferenceModel> _createModelWithFallbacks(
-    FlutterGemmaPlugin gemma,
-  ) async {
+  Future<InferenceModel> _createWithFallbacks(FlutterGemmaPlugin gemma) async {
     final backends = <PreferredBackend?>[
       PreferredBackend.gpuMixed,
       PreferredBackend.gpuFloat16,
-      PreferredBackend.gpuFull,
       PreferredBackend.gpu,
       null,
       PreferredBackend.cpu,
     ];
-
-    Object? lastError;
-    for (final backend in backends) {
+    Object? last;
+    for (final b in backends) {
       try {
         return await gemma.createModel(
           modelType: ModelType.gemmaIt,
           maxTokens: 512,
-          preferredBackend: backend,
+          preferredBackend: b,
         );
       } catch (e) {
-        lastError = e;
+        last = e;
       }
     }
-
-    throw StateError('Failed to create Gemma model: $lastError');
+    throw StateError('Failed to load Gemma model: $last');
   }
 
   Future<String> generate(String prompt) async {
     final model = _model;
-    if (model == null) {
-      throw StateError('Model not loaded');
-    }
-
+    if (model == null) throw StateError('Model not loaded');
     InferenceModelSession? session;
     try {
       session = await model.createSession();
       await session.addQueryChunk(Message(text: prompt, isUser: true));
-
-      final buffer = StringBuffer();
-      await session
-          .getResponseAsync()
-          .timeout(const Duration(seconds: 60))
-          .forEach(buffer.write);
-      return buffer.toString().trim();
+      final buf = StringBuffer();
+      await session.getResponseAsync().timeout(const Duration(seconds: 120)).forEach(buf.write);
+      return buf.toString().trim();
     } finally {
       await session?.close();
     }

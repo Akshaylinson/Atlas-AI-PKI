@@ -7,9 +7,8 @@ import '../shell/main_shell.dart';
 class PackageSetupScreen extends StatefulWidget {
   final String? bootIssue;
 
-  const PackageSetupScreen({super.key});
-  const PackageSetupScreen.withIssue({super.key, this.bootIssue})
-      : assert(true);
+  const PackageSetupScreen({super.key}) : bootIssue = null;
+  const PackageSetupScreen.withIssue({super.key, this.bootIssue});
 
   @override
   State<PackageSetupScreen> createState() => _PackageSetupScreenState();

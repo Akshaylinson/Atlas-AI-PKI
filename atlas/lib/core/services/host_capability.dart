@@ -42,7 +42,8 @@ class HostCapabilityProfile {
 
     if (Platform.isAndroid) {
       final info = await plugin.androidInfo;
-      architecture = info.supportedAbis.isNotEmpty ? info.supportedAbis.first : 'arm64';
+      architecture =
+          info.supportedAbis.isNotEmpty ? info.supportedAbis.first : 'arm64';
       gpuAvailable = true;
       gpuType = 'Android GPU';
       aiRuntime = 'flutter_gemma';
@@ -51,14 +52,14 @@ class HostCapabilityProfile {
       ramGb = await _detectLinuxRam();
       gpuAvailable = await _detectLinuxGpu();
       gpuType = gpuAvailable ? await _detectLinuxGpuType() : 'none';
-      aiRuntime = gpuAvailable ? 'llama_cpp_cuda' : 'llama_cpp_cpu';
+      aiRuntime = gpuAvailable ? 'gemma_local_cuda' : 'gemma_local_cpu';
     } else if (Platform.isWindows) {
       architecture = 'x86_64';
-      aiRuntime = 'llama_cpp_cpu';
+      aiRuntime = 'gemma_local_cpu';
     } else if (Platform.isMacOS) {
       final info = await plugin.macOsInfo;
       architecture = info.arch;
-      aiRuntime = 'llama_cpp_metal';
+      aiRuntime = 'gemma_local_metal';
     }
 
     return HostCapabilityProfile(
@@ -100,7 +101,9 @@ class HostCapabilityProfile {
       if (result.exitCode == 0) return true;
       final lspci = await Process.run('lspci', []);
       final out = lspci.stdout.toString().toLowerCase();
-      return out.contains('vga') || out.contains('3d') || out.contains('display');
+      return out.contains('vga') ||
+          out.contains('3d') ||
+          out.contains('display');
     } catch (_) {
       return false;
     }
@@ -121,8 +124,8 @@ class HostCapabilityProfile {
   static Future<bool> detectVulkan() async {
     try {
       // vulkaninfo exits 0 when Vulkan is available
-      final r = await Process.run('vulkaninfo', ['--summary'],
-          runInShell: true);
+      final r =
+          await Process.run('vulkaninfo', ['--summary'], runInShell: true);
       return r.exitCode == 0;
     } catch (_) {}
     try {

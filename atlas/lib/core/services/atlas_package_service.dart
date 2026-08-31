@@ -35,6 +35,7 @@ class AtlasPackageService {
   static Future<String> getImagesPath() => AtlasStorage.getImagesPath();
   static Future<String> getAudioPath() => AtlasStorage.getAudioPath();
   static Future<String> getDocumentsPath() => AtlasStorage.getDocumentsPath();
+  static Future<String> getVideoPath() => AtlasStorage.getVideoPath();
   static Future<String> getModelsPath() => AtlasStorage.getModelsPath();
   static Future<String> getConfigPath() => AtlasStorage.getConfigPath();
   static Future<String> getCachePath() => AtlasStorage.getCachePath();

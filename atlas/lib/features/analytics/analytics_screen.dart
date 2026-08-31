@@ -10,7 +10,7 @@ import '../../core/services/atlas_package_service.dart';
 import '../../core/services/model_loader.dart';
 import '../../shared/widgets/widgets.dart';
 import '../../shared/theme/app_theme.dart';
-import '../../shared/utils/utils.dart';
+import 'package:atlas/shared/utils/utils.dart';
 import '../camera/camera_screen.dart';
 import '../knowledge_graph/knowledge_graph_screen.dart';
 import '../package/package_setup_screen.dart';
@@ -28,7 +28,8 @@ class AnalyticsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Atlas', style: TextStyle(fontWeight: FontWeight.bold)),
+        title:
+            const Text('Atlas', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           IconButton(
             icon: const Icon(Icons.camera_alt_outlined),
@@ -38,8 +39,10 @@ class AnalyticsScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.account_tree_outlined),
             tooltip: 'Knowledge Graph',
-            onPressed: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const KnowledgeGraphScreen())),
+            onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const KnowledgeGraphScreen())),
           ),
           IconButton(
             icon: const Icon(Icons.pattern),
@@ -52,7 +55,8 @@ class AnalyticsScreen extends ConsumerWidget {
             tooltip: 'Settings',
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const _AnalyticsSettingsScreen()),
+              MaterialPageRoute(
+                  builder: (_) => const _AnalyticsSettingsScreen()),
             ),
           ),
         ],
@@ -215,10 +219,8 @@ class _ActivityBarChart extends StatelessWidget {
       gridData: const FlGridData(show: false),
       borderData: FlBorderData(show: false),
       titlesData: FlTitlesData(
-        leftTitles:
-            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        topTitles:
-            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         rightTitles:
             const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         bottomTitles: AxisTitles(
@@ -321,8 +323,10 @@ class _TrendLineChart extends StatelessWidget {
           ),
         ),
         topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles:
+            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        bottomTitles:
+            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
     ));
   }
@@ -468,7 +472,8 @@ class _AnalyticsSettingsScreenState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Unsupported model format. Please choose a .task or .bin file.'),
+            content: Text(
+                'Unsupported model format. Please choose a .task or .bin file.'),
             backgroundColor: Colors.red,
           ),
         );
@@ -482,7 +487,8 @@ class _AnalyticsSettingsScreenState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('File too small ($srcSize bytes) - not a valid model file'),
+            content: Text(
+                'File too small ($srcSize bytes) - not a valid model file'),
             backgroundColor: Colors.red,
           ),
         );
@@ -492,7 +498,8 @@ class _AnalyticsSettingsScreenState
 
     setState(() {
       _loadingModel = true;
-      _loadingStatus = 'Copying model ${(srcSize / 1024 / 1024).toStringAsFixed(0)} MB...';
+      _loadingStatus =
+          'Copying model ${(srcSize / 1024 / 1024).toStringAsFixed(0)} MB...';
     });
 
     final String destPath;
@@ -509,7 +516,9 @@ class _AnalyticsSettingsScreenState
           _loadingStatus = '';
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to copy model: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Failed to copy model: $e'),
+              backgroundColor: Colors.red),
         );
       }
       return;
@@ -532,7 +541,9 @@ class _AnalyticsSettingsScreenState
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          state.isLoaded ? 'AI model loaded successfully' : 'Failed to load model: $errorText',
+          state.isLoaded
+              ? 'AI model loaded successfully'
+              : 'Failed to load model: $errorText',
         ),
         backgroundColor: state.isLoaded ? Colors.green : Colors.red,
         duration: const Duration(seconds: 6),
@@ -550,7 +561,8 @@ class _AnalyticsSettingsScreenState
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Export failed: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -568,14 +580,16 @@ class _AnalyticsSettingsScreenState
       await AtlasPackageService.importPackage(path);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Package imported. Restart the app to apply.')),
+          const SnackBar(
+              content: Text('Package imported. Restart the app to apply.')),
         );
         await _loadPackageInfo();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Import failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Import failed: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -633,6 +647,8 @@ class _AnalyticsSettingsScreenState
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeModeProvider);
+    final aiMode = ref.watch(aiModeProvider);
+    final modelState = ref.watch(gemmaServiceProvider);
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -666,6 +682,53 @@ class _AnalyticsSettingsScreenState
             ),
           ),
           const _SettingsSectionTitle(title: 'AI Model (Gemma)'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _AiModeCard(
+                    icon: Icons.memory_outlined,
+                    label: 'Local AI',
+                    sublabel: 'Gemma on-device\n.task / .bin model',
+                    active: aiMode == AiMode.local,
+                    statusColor: aiMode == AiMode.local
+                        ? (modelState.isLoading
+                            ? Colors.orange
+                            : modelState.isLoaded
+                                ? Colors.green
+                                : Colors.red)
+                        : Colors.grey,
+                    statusLabel: aiMode == AiMode.local
+                        ? (modelState.isLoading
+                            ? 'Loading…'
+                            : modelState.isLoaded
+                                ? 'Ready'
+                                : 'Not loaded')
+                        : 'Off',
+                    onTap: () => ref.read(aiModeProvider.notifier).set(
+                          aiMode == AiMode.local ? AiMode.off : AiMode.local,
+                        ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _AiModeCard(
+                    icon: Icons.cloud_outlined,
+                    label: 'OpenRouter',
+                    sublabel: 'Cloud API\nRequires internet',
+                    active: aiMode == AiMode.api,
+                    statusColor:
+                        aiMode == AiMode.api ? Colors.green : Colors.grey,
+                    statusLabel: aiMode == AiMode.api ? 'Active' : 'Off',
+                    onTap: () => ref.read(aiModeProvider.notifier).set(
+                          aiMode == AiMode.api ? AiMode.off : AiMode.api,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+          ),
           ListTile(
             leading: const Icon(Icons.psychology_outlined),
             title: const Text('Model File'),
@@ -686,7 +749,8 @@ class _AnalyticsSettingsScreenState
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                       if (_loadingStatus.isNotEmpty)
-                        Text(_loadingStatus, style: const TextStyle(fontSize: 9)),
+                        Text(_loadingStatus,
+                            style: const TextStyle(fontSize: 9)),
                     ],
                   )
                 : TextButton(
@@ -697,7 +761,7 @@ class _AnalyticsSettingsScreenState
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Text(
-              'Select a Gemma .task or .bin model file to enable full AI reasoning.',
+              'Select a Gemma .task or .bin model file to enable local CPU AI. Use OpenRouter when you want cloud inference instead.',
               style: TextStyle(
                 fontSize: 12,
                 color: scheme.onSurface.withValues(alpha: 0.5),
@@ -723,7 +787,8 @@ class _AnalyticsSettingsScreenState
                       icon: Icon(
                         _showApiKey ? Icons.visibility_off : Icons.visibility,
                       ),
-                      onPressed: () => setState(() => _showApiKey = !_showApiKey),
+                      onPressed: () =>
+                          setState(() => _showApiKey = !_showApiKey),
                     ),
                     IconButton(
                       tooltip: 'Save key',
@@ -803,7 +868,8 @@ class _AnalyticsSettingsScreenState
             ),
           ),
           ListTile(
-            leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
+            leading:
+                const Icon(Icons.delete_forever_outlined, color: Colors.red),
             title: const Text(
               'Clear All Data',
               style: TextStyle(color: Colors.red),
@@ -815,7 +881,8 @@ class _AnalyticsSettingsScreenState
           const ListTile(
             leading: Icon(Icons.info_outline),
             title: Text('Atlas'),
-            subtitle: Text('Personal Intelligence Operating System\nVersion 1.0.0'),
+            subtitle:
+                Text('Personal Intelligence Operating System\nVersion 1.0.0'),
           ),
           const ListTile(
             leading: Icon(Icons.lock_outline),
@@ -826,6 +893,98 @@ class _AnalyticsSettingsScreenState
           ),
           const SizedBox(height: 32),
         ],
+      ),
+    );
+  }
+}
+
+class _AiModeCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String sublabel;
+  final bool active;
+  final Color statusColor;
+  final String statusLabel;
+  final VoidCallback onTap;
+
+  const _AiModeCard({
+    required this.icon,
+    required this.label,
+    required this.sublabel,
+    required this.active,
+    required this.statusColor,
+    required this.statusLabel,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: active
+              ? scheme.primaryContainer.withValues(alpha: 0.5)
+              : scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: active
+                ? scheme.primary
+                : scheme.outlineVariant.withValues(alpha: 0.5),
+            width: active ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon,
+                    size: 18,
+                    color: active ? scheme.primary : scheme.onSurfaceVariant),
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    statusLabel,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: statusColor,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: active ? scheme.onPrimaryContainer : scheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              sublabel,
+              style: TextStyle(
+                fontSize: 11,
+                color: active
+                    ? scheme.onPrimaryContainer.withValues(alpha: 0.78)
+                    : scheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -852,4 +1011,3 @@ class _SettingsSectionTitle extends StatelessWidget {
     );
   }
 }
-

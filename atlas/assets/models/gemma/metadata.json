@@ -1,6 +1,8 @@
 {
   "name": "Gemma",
-  "version": "4.0",
-  "context_length": 32768,
-  "quantization": "Q4_K_M"
+  "model_family": "gemma",
+  "supported_formats": [".task", ".bin"],
+  "recommended": "gemma-2b-it-gpu-int4.bin",
+  "download_url": "https://www.kaggle.com/models/google/gemma/frameworks/tfLite",
+  "notes": "Place a Gemma .task or .bin file in this folder. The app auto-detects it at startup."
 }
