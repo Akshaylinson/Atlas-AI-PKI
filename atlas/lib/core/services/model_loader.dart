@@ -3,7 +3,6 @@ import 'dart:isolate';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
-import 'package:flutter_gemma/core/message.dart';
 import 'package:flutter_gemma/core/model.dart';
 import 'package:flutter_gemma/pigeon.g.dart';
 
@@ -93,7 +92,9 @@ class _GemmaWorkerClient {
     final payload = msg[2];
     final c = _pending.remove(id);
     if (c == null) return;
-    ok ? c.complete(payload) : c.completeError(StateError(payload?.toString() ?? 'error'));
+    ok
+        ? c.complete(payload)
+        : c.completeError(StateError(payload?.toString() ?? 'error'));
   }
 
   Future<T> _send<T>(String action, [Object? payload]) async {
@@ -213,7 +214,10 @@ class _GemmaEngine {
       session = await model.createSession();
       await session.addQueryChunk(Message(text: prompt, isUser: true));
       final buf = StringBuffer();
-      await session.getResponseAsync().timeout(const Duration(seconds: 120)).forEach(buf.write);
+      await session
+          .getResponseAsync()
+          .timeout(const Duration(seconds: 120))
+          .forEach(buf.write);
       return buf.toString().trim();
     } finally {
       await session?.close();

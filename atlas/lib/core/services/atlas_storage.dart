@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const String kAtlasActivePackagePrefKey = 'atlas_package_dir';
@@ -89,8 +88,8 @@ class AtlasPackageManifest {
       },
       models: const {
         'primary': {
-          'path': 'models/primary/model.gguf',
-          'format': 'gguf',
+          'path': 'models/primary/gemma-3n-E2B-it-int4.task',
+          'format': 'task',
         },
         'auxiliary': 'models/auxiliary',
       },
@@ -104,12 +103,14 @@ class AtlasPackageManifest {
     return AtlasPackageManifest(
       atlasVersion: json['atlas_version']?.toString() ?? '2.0.0',
       packageId: json['package_id']?.toString() ?? '',
-      packageType: json['package_type']?.toString() ?? 'portable_personal_intelligence',
+      packageType:
+          json['package_type']?.toString() ?? 'portable_personal_intelligence',
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
       updatedAt: DateTime.tryParse(json['updated_at']?.toString() ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
-      schemaVersion: int.tryParse(json['schema_version']?.toString() ?? '') ?? 4,
+      schemaVersion:
+          int.tryParse(json['schema_version']?.toString() ?? '') ?? 4,
       minimumRuntimeVersion:
           json['minimum_runtime_version']?.toString() ?? '2.0.0',
       memory: Map<String, dynamic>.from(json['memory'] as Map? ?? const {}),
@@ -187,14 +188,100 @@ class AtlasStorage {
   static AtlasStorageProvider? get provider => _provider;
 
   static Future<void> bootstrap() async {
+    final envDir = Platform.environment['ATLAS_PACKAGE_ROOT'];
+    if (envDir != null && envDir.trim().isNotEmpty) {
+      final resolved = p.normalize(envDir.trim());
+      final validation = await validatePackage(resolved);
+      if (validation.isValid) {
+        _provider = AtlasPackageStorageProvider(resolved);
+        _manifest = validation.manifest;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(kAtlasActivePackagePrefKey, resolved);
+        return;
+      }
+    }
+
     final activeDir = await getActivePackageDir();
     if (activeDir != null) {
       final validation = await validatePackage(activeDir);
       if (validation.isValid) {
         _provider = AtlasPackageStorageProvider(activeDir);
         _manifest = validation.manifest;
+        return;
       }
     }
+
+    final discovered = await discoverPackageRoot();
+    if (discovered != null) {
+      final validation = await validatePackage(discovered);
+      if (validation.isValid) {
+        _provider = AtlasPackageStorageProvider(discovered);
+        _manifest = validation.manifest;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(kAtlasActivePackagePrefKey, discovered);
+      }
+    }
+  }
+
+  static Future<String?> discoverPackageRoot() async {
+    final envHint = Platform.environment['ATLAS_PACKAGE_ROOT'];
+    if (envHint != null && envHint.trim().isNotEmpty) {
+      final resolved = p.normalize(envHint.trim());
+      if (await _isValidPackageRoot(resolved)) {
+        return resolved;
+      }
+    }
+
+    final user = Platform.environment['USER'] ??
+        Platform.environment['LOGNAME'] ??
+        Platform.environment['USERNAME'];
+    final searchRoots = <String>[
+      if (user != null && user.isNotEmpty) '/run/media/$user',
+      if (user != null && user.isNotEmpty) '/media/$user',
+      '/run/media',
+      '/media',
+      '/mnt',
+    ];
+
+    for (final root in searchRoots) {
+      final found = await _searchForPackageRoot(root);
+      if (found != null) {
+        return found;
+      }
+    }
+    return null;
+  }
+
+  static Future<bool> _isValidPackageRoot(String root) async {
+    final dir = Directory(root);
+    if (!await dir.exists()) return false;
+    final validation = await validatePackage(root);
+    return validation.isValid;
+  }
+
+  static Future<String?> _searchForPackageRoot(String rootDir) async {
+    final root = Directory(rootDir);
+    if (!await root.exists()) return null;
+
+    final queue = <({Directory dir, int depth})>[(dir: root, depth: 0)];
+    while (queue.isNotEmpty) {
+      final current = queue.removeLast();
+      if (current.depth > 4) continue;
+
+      final manifest = File(p.join(current.dir.path, kAtlasManifestFileName));
+      if (await manifest.exists()) {
+        final validation = await validatePackage(current.dir.path);
+        if (validation.isValid) {
+          return current.dir.path;
+        }
+      }
+
+      for (final child
+          in current.dir.listSync(followLinks: false).whereType<Directory>()) {
+        queue.add((dir: child, depth: current.depth + 1));
+      }
+    }
+    return null;
   }
 
   static Future<String?> getActivePackageDir() async {
@@ -259,7 +346,8 @@ class AtlasStorage {
 
   static AtlasPackageManifest? get cachedManifest => _manifest;
 
-  static Future<AtlasPackageValidationResult> validatePackage(String packageRoot) async {
+  static Future<AtlasPackageValidationResult> validatePackage(
+      String packageRoot) async {
     final issues = <String>[];
     final manifest = await readManifest(packageRoot);
 
@@ -341,7 +429,8 @@ class AtlasStorage {
     if (path.isEmpty) return path;
     if (p.isAbsolute(path)) return path;
     final root = await getPackageRoot();
-    return p.normalize(p.join(root, p.posix.normalize(path.replaceAll('\\', '/'))));
+    return p
+        .normalize(p.join(root, p.posix.normalize(path.replaceAll('\\', '/'))));
   }
 
   static String resolvePathSync(String path) {
@@ -352,7 +441,8 @@ class AtlasStorage {
       throw StateError('No active Atlas package');
     }
     return p.normalize(
-      p.join(provider.packageRootAbs, p.posix.normalize(path.replaceAll('\\', '/'))),
+      p.join(provider.packageRootAbs,
+          p.posix.normalize(path.replaceAll('\\', '/'))),
     );
   }
 
@@ -361,7 +451,8 @@ class AtlasStorage {
     if (!p.isAbsolute(path)) {
       return p.posix.normalize(path.replaceAll('\\', '/'));
     }
-    return p.posix.normalize(p.relative(path, from: root).replaceAll('\\', '/'));
+    return p.posix
+        .normalize(p.relative(path, from: root).replaceAll('\\', '/'));
   }
 
   static String relativePathOfSync(String path) {
@@ -495,7 +586,8 @@ class AtlasStorage {
     }
   }
 
-  static Future<void> writeManifest(String packageRoot, AtlasPackageManifest manifest) async {
+  static Future<void> writeManifest(
+      String packageRoot, AtlasPackageManifest manifest) async {
     final file = File(p.join(packageRoot, kAtlasManifestFileName));
     await file.writeAsString(
       const JsonEncoder.withIndent('  ').convert(manifest.toJson()),
