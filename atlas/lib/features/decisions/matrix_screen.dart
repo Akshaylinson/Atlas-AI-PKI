@@ -472,11 +472,56 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
   }
 
   Future<void> _suggestCriteriaWithAi() async {
+    final aiMode = ref.read(aiModeProvider);
+    final db = ref.read(databaseProvider);
+    final entity = await db.getEntityById(widget.entityId);
+    final events = await db.getEventsForEntity(widget.entityId);
+    final entityName = entity?.name ?? 'this entity';
+    final notes = events
+        .take(3)
+        .map((e) => e.note.length > 60 ? e.note.substring(0, 60) : e.note)
+        .join('; ');
+    final question = _questionController.text.trim();
+    final ctx = notes.isNotEmpty ? 'Context: $notes.' : '';
+    final prompt =
+        'List 4 short decision criteria for: "$question" about $entityName. $ctx'
+        ' Reply with only a JSON array of strings. Example: ["Cost","Speed","Quality","Risk"]';
+
+    // ── API mode (OpenRouter → Gemini fallback) ──────────────────────────────
+    if (aiMode == AiMode.api) {
+      setState(() => _loadingSuggestions = true);
+      try {
+        final apiService = await ref.read(aiApiServiceProvider.future);
+        if (!apiService.hasAnyKey) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('No API key configured. Add one in Settings.')),
+            );
+          }
+          return;
+        }
+        final raw = await apiService.chat(prompt);
+        _applySuggestions(raw);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('API suggestion failed: $e')),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _loadingSuggestions = false);
+      }
+      return;
+    }
+
+    // ── Local model mode ─────────────────────────────────────────────────────
     final gemmaState = ref.read(gemmaServiceProvider);
     if (!gemmaState.isLoaded) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('AI model not loaded')),
+          const SnackBar(
+            content: Text('No AI active. Enable Local AI or OpenRouter API in Settings.'),
+          ),
         );
       }
       return;
@@ -484,46 +529,9 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
 
     setState(() => _loadingSuggestions = true);
     try {
-      final db = ref.read(databaseProvider);
-      final entity = await db.getEntityById(widget.entityId);
-      final events = await db.getEventsForEntity(widget.entityId);
-      final entityName = entity?.name ?? 'this entity';
-      // Keep prompt short: max 3 notes, truncated to 60 chars each
-      final notes = events
-          .take(3)
-          .map((e) => e.note.length > 60 ? e.note.substring(0, 60) : e.note)
-          .join('; ');
-      final question = _questionController.text.trim();
-      final ctx = notes.isNotEmpty ? 'Context: $notes.' : '';
-      final prompt =
-          'List 4 short decision criteria for: "$question" about $entityName. $ctx'
-          ' Reply with only a JSON array of strings. Example: ["Cost","Speed","Quality","Risk"]';
-
       final service = ref.read(gemmaServiceProvider.notifier).service;
-      final rawResponse = await service.generateRaw(prompt);
-      final suggestions = _parseCriteriaSuggestions(rawResponse);
-
-      if (suggestions.isEmpty) {
-        // Fallback: use generic criteria if model returns nothing parseable
-        final fallback = ['Cost', 'Quality', 'Risk', 'Time'];
-        setState(() {
-          _criteria
-            ..clear()
-            ..addAll(fallback.map((n) => _CriterionDraft(name: n, weight: 0.5)));
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('AI returned no JSON — using generic criteria')),
-          );
-        }
-        return;
-      }
-
-      setState(() {
-        _criteria
-          ..clear()
-          ..addAll(suggestions.map((name) => _CriterionDraft(name: name, weight: 0.5)));
-      });
+      final raw = await service.generateRaw(prompt);
+      _applySuggestions(raw);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -531,10 +539,31 @@ class _MatrixScreenState extends ConsumerState<MatrixScreen> {
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _loadingSuggestions = false);
-      }
+      if (mounted) setState(() => _loadingSuggestions = false);
     }
+  }
+
+  void _applySuggestions(String raw) {
+    final suggestions = _parseCriteriaSuggestions(raw);
+    if (suggestions.isEmpty) {
+      setState(() {
+        _criteria
+          ..clear()
+          ..addAll(['Cost', 'Quality', 'Risk', 'Time']
+              .map((n) => _CriterionDraft(name: n, weight: 0.5)));
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not parse AI response — using generic criteria')),
+        );
+      }
+      return;
+    }
+    setState(() {
+      _criteria
+        ..clear()
+        ..addAll(suggestions.map((n) => _CriterionDraft(name: n, weight: 0.5)));
+    });
   }
 
   List<String> _parseCriteriaSuggestions(String response) {

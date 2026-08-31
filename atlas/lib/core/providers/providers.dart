@@ -11,6 +11,8 @@ import '../services/file_storage_service.dart';
 import '../services/model_installer.dart';
 import '../services/model_loader.dart';
 import '../services/openrouter_service.dart';
+import '../services/gemini_service.dart';
+import '../services/ai_api_service.dart';
 import '../services/host_capability.dart';
 
 final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.system);
@@ -133,6 +135,14 @@ final aiModeProvider = StateNotifierProvider<_AiModeNotifier, AiMode>((ref) {
 
 final fileStorageProvider = Provider<FileStorageService>((ref) {
   return FileStorageService();
+});
+
+/// Builds AiApiService from both stored keys — used by chat and matrix AI.
+final aiApiServiceProvider = FutureProvider<AiApiService>((ref) async {
+  final db = ref.watch(databaseProvider);
+  final orKey = await db.getSetting('openrouter_api_key') ?? '';
+  final geminiKey = await db.getSetting('gemini_api_key') ?? '';
+  return AiApiService(openRouterKey: orKey, geminiKey: geminiKey);
 });
 
 final hostCapabilityProvider = FutureProvider<HostCapabilityProfile>((ref) {
@@ -285,11 +295,10 @@ class AIChatNotifier extends StateNotifier<List<ChatMessage>> {
           finalAnswer = await _gemma.generateRaw(prompt);
         }
       } else if (mode == AiMode.api) {
-        final apiKey = await _ref.read(databaseProvider).getSetting('openrouter_api_key');
-        if (apiKey == null || apiKey.trim().isEmpty) {
-          finalAnswer = 'OpenRouter API key not set. Go to Settings and add your API key.';
+        final apiService = await _ref.read(aiApiServiceProvider.future);
+        if (!apiService.hasAnyKey) {
+          finalAnswer = 'No API key configured. Go to Settings and add an OpenRouter or Gemini API key.';
         } else {
-          final openrouter = OpenRouterService(apiKey);
           final hasKbData = response.context.isNotEmpty &&
               ((response.context['entities'] as List?)?.isNotEmpty == true ||
                (response.context['events'] as List?)?.isNotEmpty == true ||
@@ -297,7 +306,7 @@ class AIChatNotifier extends StateNotifier<List<ChatMessage>> {
           final prompt = hasKbData
               ? 'You are Atlas, a personal knowledge assistant. Answer the user question using ONLY the evidence below. Be concise and natural.\n\nEvidence:\n${response.answer}\n\nQuestion: $text'
               : 'You are Atlas, a personal knowledge assistant. The user asked: "$text"\n\nThe knowledge base returned: "${response.answer}"\n\nRespond helpfully. If the entity or data is not found, say so clearly and suggest the user verify the name or add data first.';
-          finalAnswer = await openrouter.chat(prompt);
+          finalAnswer = await apiService.chat(prompt);
         }
       }
 

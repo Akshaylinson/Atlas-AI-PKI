@@ -25,7 +25,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   List<String> _validationIssues = [];
   String _storageSize = '';
   final _apiKeyCtrl = TextEditingController();
+  final _geminiKeyCtrl = TextEditingController();
   bool _showApiKey = false;
+  bool _showGeminiKey = false;
 
   @override
   void initState() {

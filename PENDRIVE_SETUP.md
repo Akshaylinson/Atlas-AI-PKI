@@ -180,14 +180,7 @@ From the pendrive root:
 
 ```bash
 cd "/run/media/akshay-linson/UBUNTU 26_0"
-./run_atlas.sh
-```
-
-If needed:
-
-```bash
-chmod +x ./run_atlas.sh
-./run_atlas.sh
+bash ./run_atlas.sh
 ```
 
 The launcher sets `ATLAS_PACKAGE_ROOT` and starts the host app.
@@ -216,7 +209,7 @@ Show PackageSetupScreen only if missing or invalid
 PENDRIVE/
 ├── run_atlas.sh
 ├── atlas-app/
-│   ├── atlas
+│   ├── atlas.exe
 │   ├── lib/
 │   └── data/
 │       └── flutter_assets/
@@ -264,8 +257,7 @@ udisksctl power-off -b /dev/sdX
 | Build app | `flutter build linux --release` |
 | Copy app | `cp -r build/linux/x64/release/bundle/. /run/media/.../atlas-app/` |
 | Copy launcher | `cp run_atlas.sh /run/media/.../` |
-| Run from USB | `./run_atlas.sh` |
+| Run from USB | `bash run_atlas.sh` |
 | Put model in package | `Atlas/models/primary/gemma-3n-E2B-it-int4.task` |
 | Put model in app bundle | `atlas/assets/models/gemma/gemma-3n-E2B-it-int4.task` |
 | Safe eject | Close Atlas, then unmount and power off the drive |
-
