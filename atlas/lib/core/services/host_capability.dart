@@ -117,4 +117,20 @@ class HostCapabilityProfile {
     } catch (_) {}
     return 'unknown';
   }
+
+  static Future<bool> detectVulkan() async {
+    try {
+      // vulkaninfo exits 0 when Vulkan is available
+      final r = await Process.run('vulkaninfo', ['--summary'],
+          runInShell: true);
+      return r.exitCode == 0;
+    } catch (_) {}
+    try {
+      // Fallback: check if the Vulkan loader library is present
+      return File('/usr/lib/x86_64-linux-gnu/libvulkan.so.1').existsSync() ||
+          File('/usr/lib/libvulkan.so.1').existsSync();
+    } catch (_) {
+      return false;
+    }
+  }
 }

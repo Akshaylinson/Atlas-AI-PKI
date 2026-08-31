@@ -1,7 +1,9 @@
+import 'dart:io';
 import '../database/app_database.dart';
 import '../models/models.dart';
 import 'atlas_package_service.dart';
 import 'atlas_ai_runtime.dart';
+import 'host_capability.dart';
 import 'decision_intelligence.dart';
 import 'retrieval_engine.dart';
 import '../../shared/utils/utils.dart';
@@ -21,7 +23,7 @@ class GemmaService {
   final AppDatabase _db;
   final RetrievalEngine _retrieval;
   final DecisionIntelligenceEngine _decisionIntelligence;
-  late final AtlasAIRuntime _runtime;
+  late AtlasAIRuntime _runtime;
 
   final Map<String, Map<String, dynamic>> _sessionMemory = {};
   String? _activeEntityId;
@@ -29,7 +31,16 @@ class GemmaService {
   GemmaService(this._db)
       : _retrieval = RetrievalEngine(_db),
         _decisionIntelligence = DecisionIntelligenceEngine(_db),
-        _runtime = FlutterGemmaRuntime();
+        _runtime = FlutterGemmaRuntime() {
+    if (Platform.isLinux) {
+      _initLinuxRuntime();
+    }
+  }
+
+  Future<void> _initLinuxRuntime() async {
+    final profile = await HostCapabilityProfile.detect();
+    _runtime = await AtlasAIRuntimeManager.selectRuntimeAsync(profile);
+  }
 
   bool get isModelLoaded => _runtime.isLoaded;
   bool get isModelLoading => _runtime.isLoading;

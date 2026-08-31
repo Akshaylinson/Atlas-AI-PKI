@@ -87,4 +87,8 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    # metadata.json is always bundled (tiny, describes the model slot)
     - assets/models/gemma/metadata.json
+    # The actual model file (.gguf/.task/.bin) is placed here manually
+    # and is gitignored. ModelInstaller scans this folder at runtime.
+    - assets/models/gemma/

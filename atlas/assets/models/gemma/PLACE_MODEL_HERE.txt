@@ -1,0 +1,5 @@
+# Place your model file here
+# Supported formats: .gguf  .task  .bin
+# Example: gemma-2b-it-q4_k_m.gguf
+# The app will auto-detect any model file in this folder at startup.
+# Do NOT commit large model files to git — add them to .gitignore.

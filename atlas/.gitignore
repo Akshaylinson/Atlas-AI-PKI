@@ -18,9 +18,7 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
+# VS Code
 #.vscode/
 
 # Flutter/Dart/Pub related
@@ -44,7 +42,9 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Gemma model files - too large for git
-assets/models/gemma/model.gguf
+# Model files — too large for git, place manually
+assets/models/gemma/*.gguf
+assets/models/gemma/*.task
+assets/models/gemma/*.bin
 assets/models/gemma/tokenizer.json
 assets/models/gemma/config.json
