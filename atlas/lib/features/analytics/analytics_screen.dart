@@ -79,91 +79,236 @@ class AnalyticsScreen extends ConsumerWidget {
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (stats) => RefreshIndicator(
           onRefresh: () => ref.refresh(dashboardStatsProvider.future),
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 1.4,
-                children: [
-                  StatCard(
-                    label: 'Total Events',
-                    value: stats.totalEvents.toString(),
-                    icon: Icons.event_note,
-                    color: Colors.blue,
-                  ),
-                  StatCard(
-                    label: 'Entities',
-                    value: stats.totalEntities.toString(),
-                    icon: Icons.category,
-                    color: Colors.purple,
-                  ),
-                  StatCard(
-                    label: 'Patterns Found',
-                    value: stats.patternCount.toString(),
-                    icon: Icons.pattern,
-                    color: Colors.teal,
-                  ),
-                  StatCard(
-                    label: 'High Confidence',
-                    value: stats.highConfidencePatterns.toString(),
-                    icon: Icons.verified,
-                    color: Colors.green,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              if (stats.moodDistribution.isNotEmpty) ...[
-                const SectionHeader(title: 'Mood Distribution'),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: 200,
-                  child: _MoodPieChart(distribution: stats.moodDistribution),
-                ),
-                const SizedBox(height: 24),
-              ],
-              eventsAsync.when(
-                loading: () => const SizedBox.shrink(),
-                error: (_, __) => const SizedBox.shrink(),
-                data: (events) {
-                  if (events.isEmpty) return const SizedBox.shrink();
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1600),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isDesktop = constraints.maxWidth >= 900;
+                  return ListView(
+                    padding: EdgeInsets.all(isDesktop ? 24 : 16),
                     children: [
-                      const SectionHeader(title: 'Activity (Last 30 Days)'),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        height: 160,
-                        child: _ActivityBarChart(events: events),
+                      GridView.count(
+                        crossAxisCount: isDesktop ? 4 : 2,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: isDesktop ? 2.8 : 1.4,
+                        children: [
+                          StatCard(
+                            label: 'Total Events',
+                            value: stats.totalEvents.toString(),
+                            icon: Icons.event_note,
+                            color: Colors.blue,
+                          ),
+                          StatCard(
+                            label: 'Entities',
+                            value: stats.totalEntities.toString(),
+                            icon: Icons.category,
+                            color: Colors.purple,
+                          ),
+                          StatCard(
+                            label: 'Patterns Found',
+                            value: stats.patternCount.toString(),
+                            icon: Icons.pattern,
+                            color: Colors.teal,
+                          ),
+                          StatCard(
+                            label: 'High Confidence',
+                            value: stats.highConfidencePatterns.toString(),
+                            icon: Icons.verified,
+                            color: Colors.green,
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 24),
-                      const SectionHeader(title: 'Activity Heatmap'),
-                      const SizedBox(height: 12),
-                      _HeatmapSection(events: events),
-                      const SizedBox(height: 24),
-                      const SectionHeader(title: 'Importance Trend'),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        height: 140,
-                        child: _TrendLineChart(events: events),
-                      ),
-                      const SizedBox(height: 24),
+                      if (isDesktop)
+                        _DesktopDashboardDetails(
+                          stats: stats,
+                          eventsAsync: eventsAsync,
+                        )
+                      else ...[
+                        if (stats.moodDistribution.isNotEmpty) ...[
+                          const SectionHeader(title: 'Mood Distribution'),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            height: 200,
+                            child: _MoodPieChart(
+                                distribution: stats.moodDistribution),
+                          ),
+                          const SizedBox(height: 24),
+                        ],
+                        eventsAsync.when(
+                          loading: () => const SizedBox.shrink(),
+                          error: (_, __) => const SizedBox.shrink(),
+                          data: (events) {
+                            if (events.isEmpty) return const SizedBox.shrink();
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SectionHeader(
+                                    title: 'Activity (Last 30 Days)'),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  height: 160,
+                                  child: _ActivityBarChart(events: events),
+                                ),
+                                const SizedBox(height: 24),
+                                const SectionHeader(title: 'Activity Heatmap'),
+                                const SizedBox(height: 12),
+                                _HeatmapSection(events: events),
+                                const SizedBox(height: 24),
+                                const SectionHeader(title: 'Importance Trend'),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  height: 140,
+                                  child: _TrendLineChart(events: events),
+                                ),
+                                const SizedBox(height: 24),
+                              ],
+                            );
+                          },
+                        ),
+                        if (stats.recentEvents.isNotEmpty) ...[
+                          const SectionHeader(title: 'Recent Events'),
+                          const SizedBox(height: 12),
+                          ...stats.recentEvents
+                              .map((e) => _RecentEventTile(event: e)),
+                        ],
+                      ],
                     ],
                   );
                 },
               ),
-              if (stats.recentEvents.isNotEmpty) ...[
-                const SectionHeader(title: 'Recent Events'),
-                const SizedBox(height: 12),
-                ...stats.recentEvents.map((e) => _RecentEventTile(event: e)),
-              ],
-            ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _DesktopDashboardDetails extends StatelessWidget {
+  final DashboardStats stats;
+  final AsyncValue<List<Event>> eventsAsync;
+
+  const _DesktopDashboardDetails({
+    required this.stats,
+    required this.eventsAsync,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final events = eventsAsync.valueOrNull ?? const <Event>[];
+    return Column(
+      children: [
+        if (stats.moodDistribution.isNotEmpty || events.isNotEmpty)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (stats.moodDistribution.isNotEmpty)
+                Expanded(
+                  child: _DashboardPanel(
+                    title: 'Mood Distribution',
+                    icon: Icons.donut_large_outlined,
+                    child: SizedBox(
+                      height: 220,
+                      child:
+                          _MoodPieChart(distribution: stats.moodDistribution),
+                    ),
+                  ),
+                ),
+              if (stats.moodDistribution.isNotEmpty && events.isNotEmpty)
+                const SizedBox(width: 16),
+              if (events.isNotEmpty)
+                Expanded(
+                  child: _DashboardPanel(
+                    title: 'Activity · Last 30 Days',
+                    icon: Icons.bar_chart_outlined,
+                    child: SizedBox(
+                      height: 220,
+                      child: _ActivityBarChart(events: events),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        if (events.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _DashboardPanel(
+            title: 'Activity Heatmap · 16 Weeks',
+            icon: Icons.grid_view_outlined,
+            child: _HeatmapSection(events: events),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _DashboardPanel(
+                  title: 'Importance Trend',
+                  icon: Icons.show_chart_outlined,
+                  child: SizedBox(
+                    height: 190,
+                    child: _TrendLineChart(events: events),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _DashboardPanel(
+                  title: 'Recent Events',
+                  icon: Icons.bolt_outlined,
+                  child: Column(
+                    children: stats.recentEvents
+                        .map((event) => _RecentEventTile(event: event))
+                        .toList(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _DashboardPanel extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  const _DashboardPanel({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: scheme.outline.withValues(alpha: 0.14)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: scheme.primary),
+              const SizedBox(width: 8),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
       ),
     );
   }
