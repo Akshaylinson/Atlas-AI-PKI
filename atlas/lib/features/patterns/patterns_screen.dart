@@ -42,6 +42,7 @@ class PatternsScreen extends ConsumerWidget {
         data: (patterns) {
           final latestRun = aiState.latestRun;
           final latestLabels = aiState.latestLabelsByPatternId;
+          final demoLoading = ref.watch(demoDataProvider);
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -63,14 +64,41 @@ class PatternsScreen extends ConsumerWidget {
                     : () => ref.read(patternAiProvider.notifier).runScan(),
               ),
               const SizedBox(height: 16),
-              if (patterns.isEmpty)
+              if (patterns.isEmpty) ...[
                 const EmptyState(
                   icon: Icons.pattern,
                   title: 'No patterns discovered yet',
                   subtitle:
-                      'Patterns are automatically discovered as you record more events. The AI button can label them once they exist.',
-                )
-              else ...[
+                      'Patterns are automatically discovered as you record more events. Load sample data to try the workflow now.',
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  icon: demoLoading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.auto_awesome),
+                  label: Text(demoLoading
+                      ? 'Creating sample data...'
+                      : 'Load sample entities and events'),
+                  onPressed: demoLoading
+                      ? null
+                      : () async {
+                          final result =
+                              await ref.read(demoDataProvider.notifier).load();
+                          if (!context.mounted || result == null) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(result.alreadyLoaded
+                                  ? 'Sample data is already loaded.'
+                                  : 'Created ${result.entityCount} entities and ${result.eventCount} events. Patterns are being updated.'),
+                            ),
+                          );
+                        },
+                ),
+              ] else ...[
                 Row(
                   children: [
                     Expanded(

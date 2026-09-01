@@ -10,6 +10,7 @@ import '../services/analytics_engine.dart';
 import '../services/decision_intelligence.dart';
 import '../services/gemma_service.dart';
 import '../services/pattern_ai_service.dart';
+import '../services/demo_data_service.dart';
 import '../services/file_storage_service.dart';
 import '../services/ai_api_service.dart'
     show AiApiService, kPrimaryAiProviderName, kFallbackAiProviderName;
@@ -235,6 +236,10 @@ class PatternAiNotifier extends StateNotifier<PatternAiState> {
     _loadHistory();
   }
 
+  void clearError() {
+    if (state.error != null) state = state.copyWith(error: null);
+  }
+
   Future<void> _loadHistory() async {
     final raw = await _ref
         .read(databaseProvider)
@@ -351,6 +356,31 @@ final patternAiServiceProvider = Provider<PatternAiService>((ref) {
 final patternAiProvider =
     StateNotifierProvider<PatternAiNotifier, PatternAiState>((ref) {
   return PatternAiNotifier(ref);
+});
+
+class DemoDataNotifier extends StateNotifier<bool> {
+  final Ref _ref;
+
+  DemoDataNotifier(this._ref) : super(false);
+
+  Future<DemoDataResult?> load() async {
+    if (state) return null;
+    state = true;
+    try {
+      final result = await DemoDataService().load(
+        _ref.read(databaseProvider),
+        _ref.read(pkiPipelineProvider),
+      );
+      _ref.read(patternAiProvider.notifier).clearError();
+      return result;
+    } finally {
+      if (mounted) state = false;
+    }
+  }
+}
+
+final demoDataProvider = StateNotifierProvider<DemoDataNotifier, bool>((ref) {
+  return DemoDataNotifier(ref);
 });
 
 // ── Statistics Providers ──────────────────────────────────────────────────────
