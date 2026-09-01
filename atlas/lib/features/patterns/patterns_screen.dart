@@ -59,6 +59,7 @@ class PatternsScreen extends ConsumerWidget {
               _AiControlCard(
                 isRunning: aiState.isRunning,
                 latestRun: latestRun,
+                patterns: patterns,
                 onRun: aiState.isRunning
                     ? null
                     : () => ref.read(patternAiProvider.notifier).runScan(),
@@ -164,11 +165,13 @@ class PatternsScreen extends ConsumerWidget {
 class _AiControlCard extends StatelessWidget {
   final bool isRunning;
   final PatternAiRun? latestRun;
+  final List<Pattern> patterns;
   final VoidCallback? onRun;
 
   const _AiControlCard({
     required this.isRunning,
     required this.latestRun,
+    required this.patterns,
     required this.onRun,
   });
 
@@ -232,9 +235,11 @@ class _AiControlCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
-            Text(latestRun!.summary.isEmpty
-                ? 'AI scan complete.'
-                : latestRun!.summary),
+            _AiResponseBubble(
+              summary: latestRun!.summary,
+              labels: latestRun!.labels,
+              patterns: patterns,
+            ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 6,
@@ -257,6 +262,100 @@ class _AiControlCard extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _AiResponseBubble extends StatelessWidget {
+  final String summary;
+  final List<PatternAiLabel> labels;
+  final List<Pattern> patterns;
+
+  const _AiResponseBubble({
+    required this.summary,
+    required this.labels,
+    required this.patterns,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final titles = {for (final pattern in patterns) pattern.id: pattern.title};
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withOpacity(0.45),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outline.withOpacity(0.14)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.smart_toy_outlined, size: 18, color: scheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  summary.isEmpty ? 'AI scan complete.' : summary,
+                  style: const TextStyle(height: 1.35),
+                ),
+              ),
+            ],
+          ),
+          if (labels.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ...labels.take(6).map((label) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _AiFinding(
+                    label: label,
+                    patternTitle: titles[label.patternId],
+                  ),
+                )),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AiFinding extends StatelessWidget {
+  final PatternAiLabel label;
+  final String? patternTitle;
+
+  const _AiFinding({required this.label, this.patternTitle});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.label_outline, size: 16, color: scheme.secondary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: RichText(
+            text: TextSpan(
+              style: DefaultTextStyle.of(context).style.copyWith(fontSize: 12),
+              children: [
+                TextSpan(
+                  text:
+                      '${patternTitle ?? 'Pattern'}: ${label.relationshipLabel.replaceAll('_', ' ')} ',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                TextSpan(
+                  text:
+                      '${(label.confidence * 100).toStringAsFixed(0)}% confidence',
+                  style: TextStyle(color: scheme.onSurface.withOpacity(0.65)),
+                ),
+                if (label.reason.isNotEmpty)
+                  TextSpan(text: '\n${label.reason}'),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

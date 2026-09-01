@@ -17,9 +17,11 @@ class PatternAiLabel {
 
   factory PatternAiLabel.fromJson(Map<String, dynamic> json) {
     return PatternAiLabel(
-      patternId: json['patternId'] as String? ?? '',
+      patternId: (json['patternId'] ?? json['pattern']) as String? ?? '',
       relationshipLabel: json['relationshipLabel'] as String? ?? 'unknown',
-      confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
+      confidence: ((json['confidence'] as num?)?.toDouble() ?? 0.0)
+          .clamp(0.0, 1.0)
+          .toDouble(),
       reason: json['reason'] as String? ?? '',
     );
   }
@@ -48,18 +50,34 @@ class PatternAiRun {
   });
 
   factory PatternAiRun.fromJson(Map<String, dynamic> json) {
+    final rawSummary = json['summary'] as String? ?? '';
     return PatternAiRun(
       id: json['id'] as String? ?? '',
       timestamp: DateTime.tryParse(json['timestamp'] as String? ?? '') ??
           DateTime.now(),
       backend: json['backend'] as String? ?? 'unknown',
-      summary: json['summary'] as String? ?? '',
+      summary: _cleanStoredSummary(rawSummary),
       labels: ((json['labels'] as List?) ?? const [])
           .whereType<Map>()
           .map((item) =>
               PatternAiLabel.fromJson(Map<String, dynamic>.from(item)))
           .toList(),
     );
+  }
+
+  static String _cleanStoredSummary(String summary) {
+    final trimmed = summary
+        .replaceAll(RegExp(r'```(?:json)?', caseSensitive: false), '')
+        .trim();
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is Map && decoded['summary'] is String) {
+        return decoded['summary'] as String;
+      }
+    } catch (_) {
+      // Keep legitimate plain-text summaries unchanged.
+    }
+    return trimmed;
   }
 
   Map<String, dynamic> toJson() => {
@@ -176,7 +194,7 @@ ${const JsonEncoder.withIndent('  ').convert(recentPayload)}
     }
 
     return PatternAiAnalysis(
-      summary: response.trim(),
+      summary: _fallbackSummary(response),
       labels: _fillMissingLabels(const [], patterns),
     );
   }
@@ -199,7 +217,9 @@ ${const JsonEncoder.withIndent('  ').convert(recentPayload)}
   }
 
   dynamic _decodeJsonObject(String response) {
-    final trimmed = response.trim();
+    final trimmed = response
+        .replaceAll(RegExp(r'```(?:json)?', caseSensitive: false), '')
+        .trim();
     final start = trimmed.indexOf('{');
     final end = trimmed.lastIndexOf('}');
     if (start < 0 || end <= start) {
@@ -211,5 +231,18 @@ ${const JsonEncoder.withIndent('  ').convert(recentPayload)}
     } catch (_) {
       return null;
     }
+  }
+
+  String _fallbackSummary(String response) {
+    final match =
+        RegExp(r'"summary"\s*:\s*"((?:\\.|[^"\\])*)"').firstMatch(response);
+    if (match != null) {
+      try {
+        return jsonDecode('"${match.group(1)}"') as String;
+      } catch (_) {
+        return match.group(1) ?? '';
+      }
+    }
+    return 'AI scan completed. Review the relationship labels below.';
   }
 }
