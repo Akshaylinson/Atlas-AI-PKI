@@ -52,6 +52,18 @@ class AnalyticsScreen extends ConsumerWidget {
                 MaterialPageRoute(builder: (_) => const PatternsScreen())),
           ),
           IconButton(
+            icon: const Icon(Icons.auto_awesome_outlined),
+            tooltip: 'Run AI Pattern Scan',
+            onPressed: () async {
+              await ref.read(patternAiProvider.notifier).runScan();
+              if (!context.mounted) return;
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PatternsScreen()),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: 'Settings',
             onPressed: () => Navigator.push(
@@ -791,7 +803,7 @@ class _AnalyticsSettingsScreenState
               obscureText: !_showApiKey,
               autocorrect: false,
               enableSuggestions: false,
-                decoration: InputDecoration(
+              decoration: InputDecoration(
                 labelText: '$kPrimaryAiProviderName API Key',
                 helperText: 'Get your key from Google AI Studio',
                 suffixIcon: Row(
@@ -824,7 +836,7 @@ class _AnalyticsSettingsScreenState
               obscureText: !_showGeminiKey,
               autocorrect: false,
               enableSuggestions: false,
-                decoration: InputDecoration(
+              decoration: InputDecoration(
                 labelText: '$kFallbackAiProviderName API Key',
                 helperText: 'Get a free key at openrouter.ai',
                 suffixIcon: Row(

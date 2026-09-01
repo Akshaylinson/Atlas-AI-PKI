@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/material.dart';
 import '../database/app_database.dart';
@@ -7,6 +9,7 @@ import '../services/retrieval_engine.dart';
 import '../services/analytics_engine.dart';
 import '../services/decision_intelligence.dart';
 import '../services/gemma_service.dart';
+import '../services/pattern_ai_service.dart';
 import '../services/file_storage_service.dart';
 import '../services/ai_api_service.dart'
     show AiApiService, kPrimaryAiProviderName, kFallbackAiProviderName;
@@ -187,6 +190,167 @@ final relationshipsForEntityProvider =
 
 final patternsStreamProvider = StreamProvider<List<Pattern>>((ref) {
   return ref.watch(databaseProvider).watchAllPatterns();
+});
+
+class PatternAiState {
+  final bool isRunning;
+  final String? error;
+  final List<PatternAiRun> history;
+
+  const PatternAiState({
+    this.isRunning = false,
+    this.error,
+    this.history = const [],
+  });
+
+  PatternAiRun? get latestRun => history.isEmpty ? null : history.first;
+
+  Map<String, PatternAiLabel> get latestLabelsByPatternId {
+    final latest = latestRun;
+    if (latest == null) return const {};
+    return {
+      for (final label in latest.labels) label.patternId: label,
+    };
+  }
+
+  static const Object _unset = Object();
+
+  PatternAiState copyWith({
+    bool? isRunning,
+    Object? error = _unset,
+    List<PatternAiRun>? history,
+  }) {
+    return PatternAiState(
+      isRunning: isRunning ?? this.isRunning,
+      error: error == _unset ? this.error : error as String?,
+      history: history ?? this.history,
+    );
+  }
+}
+
+class PatternAiNotifier extends StateNotifier<PatternAiState> {
+  final Ref _ref;
+
+  PatternAiNotifier(this._ref) : super(const PatternAiState()) {
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    final raw = await _ref
+        .read(databaseProvider)
+        .getSetting(PatternAiService.historySettingKey);
+    if (raw == null || raw.trim().isEmpty) {
+      return;
+    }
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        final history = decoded
+            .whereType<Map>()
+            .map((item) =>
+                PatternAiRun.fromJson(Map<String, dynamic>.from(item)))
+            .toList();
+        if (!mounted) return;
+        state = state.copyWith(history: history);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      state =
+          state.copyWith(error: 'Stored pattern AI history could not be read.');
+    }
+  }
+
+  Future<void> runScan() async {
+    if (state.isRunning) return;
+    state = state.copyWith(isRunning: true, error: null);
+
+    try {
+      final db = _ref.read(databaseProvider);
+      final patterns = await db.getAllPatterns();
+      final recentEvents = await db.getRecentEvents(limit: 20);
+      final relationships = await db.getAllRelationships();
+
+      if (patterns.isEmpty) {
+        throw StateError('No patterns available to analyze yet.');
+      }
+
+      final service = _ref.read(patternAiServiceProvider);
+      final prompt = service.buildPrompt(
+        patterns: patterns,
+        recentEvents: recentEvents,
+        relationships: relationships,
+      );
+
+      final backend = await _resolveBackend();
+      final rawResponse = switch (backend.$1) {
+        _PatternAiBackend.local => backend.$2.generateRaw(prompt),
+        _PatternAiBackend.api => backend.$3.chat(prompt),
+      };
+
+      final response = await rawResponse;
+      final analysis = service.parseAnalysis(response, patterns);
+      final run = PatternAiRun(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        timestamp: DateTime.now(),
+        backend: backend.$1.name,
+        summary:
+            analysis.summary.isEmpty ? 'AI scan completed.' : analysis.summary,
+        labels: analysis.labels,
+      );
+
+      final history = [run, ...state.history].take(10).toList();
+      await db.setSetting(
+        PatternAiService.historySettingKey,
+        jsonEncode(history.map((item) => item.toJson()).toList()),
+      );
+
+      if (!mounted) return;
+      state = state.copyWith(isRunning: false, history: history, error: null);
+    } catch (e) {
+      if (!mounted) return;
+      state = state.copyWith(isRunning: false, error: e.toString());
+    }
+  }
+
+  Future<(_PatternAiBackend, GemmaService, AiApiService)>
+      _resolveBackend() async {
+    final mode = _ref.read(aiModeProvider);
+    final gemma = _ref.read(gemmaServiceProvider.notifier).service;
+    final api = await _ref.read(aiApiServiceProvider.future);
+
+    final candidates = switch (mode) {
+      AiMode.local => [_PatternAiBackend.local, _PatternAiBackend.api],
+      AiMode.api => [_PatternAiBackend.api, _PatternAiBackend.local],
+      AiMode.off => [_PatternAiBackend.local, _PatternAiBackend.api],
+    };
+
+    for (final candidate in candidates) {
+      if (candidate == _PatternAiBackend.local && gemma.isModelLoaded) {
+        return (candidate, gemma, api);
+      }
+      if (candidate == _PatternAiBackend.api && api.hasAnyKey) {
+        return (candidate, gemma, api);
+      }
+    }
+
+    throw StateError(
+      mode == AiMode.api
+          ? 'No API key configured. Add a Gemini or OpenRouter API key in Settings.'
+          : 'No AI model is available yet. Load a local model or configure an API key in Settings.',
+    );
+  }
+}
+
+enum _PatternAiBackend { local, api }
+
+final patternAiServiceProvider = Provider<PatternAiService>((ref) {
+  return PatternAiService();
+});
+
+final patternAiProvider =
+    StateNotifierProvider<PatternAiNotifier, PatternAiState>((ref) {
+  return PatternAiNotifier(ref);
 });
 
 // ── Statistics Providers ──────────────────────────────────────────────────────

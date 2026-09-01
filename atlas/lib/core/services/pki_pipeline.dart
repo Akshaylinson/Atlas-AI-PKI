@@ -7,6 +7,16 @@ import '../database/app_database.dart';
 import '../database/tables.dart';
 import 'package:drift/drift.dart' show Value;
 
+// Keyword → relationship type mapping used by rule-based typer
+const _relKeywords = <String, List<String>>{
+  'works_with': ['met', 'meeting', 'worked', 'collaborated', 'team', 'project', 'office'],
+  'called': ['called', 'phoned', 'rang', 'texted', 'messaged', 'emailed'],
+  'decided_with': ['decided', 'chose', 'agreed', 'approved', 'rejected', 'voted'],
+  'caused_by': ['caused', 'led to', 'resulted', 'because', 'triggered', 'due to'],
+  'conflict_with': ['argued', 'conflict', 'disagreed', 'fight', 'dispute', 'tension'],
+  'supports': ['helped', 'supported', 'assisted', 'backed', 'encouraged'],
+};
+
 /// Personal Knowledge Index Pipeline
 /// Runs after every event save to keep the system always learning.
 class PKIPipeline {
@@ -70,45 +80,50 @@ class PKIPipeline {
   Future<void> _detectRelationships(Event event) async {
     final linkedIds = List<String>.from(jsonDecode(event.linkedEntityIds));
     if (linkedIds.length < 2) return;
+    final inferredType = _inferRelationshipType(event.note);
 
     for (int i = 0; i < linkedIds.length; i++) {
       for (int j = i + 1; j < linkedIds.length; j++) {
         final fromId = linkedIds[i];
         final toId = linkedIds[j];
-
-        // Check if relationship already exists
         final existing = await _db.getRelationshipsForEntity(fromId);
-        final alreadyExists = existing.any(
+        final match = existing.where(
           (r) => (r.fromEntityId == fromId && r.toEntityId == toId) ||
               (r.fromEntityId == toId && r.toEntityId == fromId),
-        );
+        ).firstOrNull;
 
-        if (!alreadyExists) {
+        if (match == null) {
           await _db.upsertRelationship(RelationshipsCompanion(
             id: Value(_uuid.v4()),
             fromEntityId: Value(fromId),
             toEntityId: Value(toId),
-            relationshipType: Value('co_occurred'),
+            relationshipType: Value(inferredType),
             strength: const Value(0.5),
           ));
         } else {
-          // Strengthen existing relationship
-          final rel = existing.firstWhere(
-            (r) => (r.fromEntityId == fromId && r.toEntityId == toId) ||
-                (r.fromEntityId == toId && r.toEntityId == fromId),
-          );
-          final newStrength = min(1.0, rel.strength + 0.05);
+          // Strengthen and refine type if we now have a better keyword match
+          final updatedType = (match.relationshipType == 'co_occurred' && inferredType != 'co_occurred')
+              ? inferredType
+              : match.relationshipType;
           await _db.upsertRelationship(RelationshipsCompanion(
-            id: Value(rel.id),
-            fromEntityId: Value(rel.fromEntityId),
-            toEntityId: Value(rel.toEntityId),
-            relationshipType: Value(rel.relationshipType),
-            strength: Value(newStrength),
+            id: Value(match.id),
+            fromEntityId: Value(match.fromEntityId),
+            toEntityId: Value(match.toEntityId),
+            relationshipType: Value(updatedType),
+            strength: Value(min(1.0, match.strength + 0.05)),
             updatedAt: Value(DateTime.now()),
           ));
         }
       }
     }
+  }
+
+  String _inferRelationshipType(String note) {
+    final lower = note.toLowerCase();
+    for (final entry in _relKeywords.entries) {
+      if (entry.value.any(lower.contains)) return entry.key;
+    }
+    return 'co_occurred';
   }
 
   // ── Step 3: Generate simple TF-IDF style embedding ───────────────────────
