@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 /// Google Gemini API (AI Studio).
 class GeminiService {
   final String apiKey;
-  static const _model = 'gemini-2.0-flash';
+  static const _model = 'gemini-2.5-flash';
   static const _endpoint =
       'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent';
 
