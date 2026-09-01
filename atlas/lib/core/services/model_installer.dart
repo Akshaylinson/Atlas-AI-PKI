@@ -2,21 +2,62 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'atlas_package_service.dart';
 
 /// Gemma-only model formats supported by flutter_gemma / MediaPipe.
 const _gemmaExts = ['.task', '.bin'];
-const _defaultBundledModelName = 'gemma-3n-E2B-it-int4.task';
+const _defaultBundledModelName = 'gemma3-1b-it-int4.task';
 
 class ModelInstaller {
   /// Checks in order:
-  ///   1. Active Atlas Package  models/ directory  (pendrive / package)
-  ///   2. assets/models/gemma/ bundled with the app binary (desktop)
-  ///   3. APK asset bundle copy (Android)
+  ///   1. Local cache (~/.cache/atlas/models/) — fast internal disk
+  ///   2. Active Atlas Package models/ directory (pendrive / package)
+  ///   3. assets/models/gemma/ bundled with the app binary (desktop)
+  ///   4. APK asset bundle copy (Android)
   ///
+  /// On first run from pendrive, copies model to local cache for fast loads.
   /// Returns absolute path to first Gemma model found, or null.
   Future<String?> ensureInstalled() async {
-    return await _scanPackageModels() ?? await _scanBundledAssets();
+    final cached = await _scanLocalCache();
+    if (cached != null) return cached;
+    final packagePath = await _scanPackageModels();
+    if (packagePath != null) {
+      // Cache it locally for fast subsequent loads
+      final localPath = await _cacheModel(packagePath);
+      return localPath ?? packagePath;
+    }
+    return await _scanBundledAssets();
+  }
+
+  Future<String?> _localCacheDir() async {
+    try {
+      final base = await getApplicationCacheDirectory();
+      final dir = Directory(p.join(base.path, 'atlas', 'models'));
+      await dir.create(recursive: true);
+      return dir.path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _scanLocalCache() async {
+    final dir = await _localCacheDir();
+    if (dir == null) return null;
+    return _firstIn(dir);
+  }
+
+  Future<String?> _cacheModel(String sourcePath) async {
+    try {
+      final dir = await _localCacheDir();
+      if (dir == null) return null;
+      final dest = File(p.join(dir, p.basename(sourcePath)));
+      if (dest.existsSync()) return dest.path;
+      await File(sourcePath).copy(dest.path);
+      return dest.path;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<String?> _scanPackageModels() async {

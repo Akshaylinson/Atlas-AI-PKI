@@ -88,7 +88,7 @@ class AtlasPackageManifest {
       },
       models: const {
         'primary': {
-          'path': 'models/primary/gemma-3n-E2B-it-int4.task',
+          'path': 'models/primary/gemma3-1b-it-int4.task',
           'format': 'task',
         },
         'auxiliary': 'models/auxiliary',

@@ -8,8 +8,6 @@ import '../services/analytics_engine.dart';
 import '../services/decision_intelligence.dart';
 import '../services/gemma_service.dart';
 import '../services/file_storage_service.dart';
-import '../services/model_installer.dart';
-import '../services/model_loader.dart';
 import '../services/ai_api_service.dart'
     show AiApiService, kPrimaryAiProviderName, kFallbackAiProviderName;
 import '../services/host_capability.dart';
@@ -41,20 +39,6 @@ final analyticsEngineProvider = Provider<AnalyticsEngine>((ref) {
 final decisionIntelligenceProvider =
     Provider<DecisionIntelligenceEngine>((ref) {
   return DecisionIntelligenceEngine(ref.watch(databaseProvider));
-});
-
-final modelInstallerProvider =
-    Provider<ModelInstaller>((ref) => ModelInstaller());
-
-final modelInstallProvider = FutureProvider<String?>((ref) async {
-  final savedPath =
-      await ref.watch(databaseProvider).getSetting('gemma_model_path');
-  if (savedPath != null &&
-      savedPath.isNotEmpty &&
-      supportedGemmaModelExtensions.any(savedPath.toLowerCase().endsWith)) {
-    return savedPath;
-  }
-  return ref.watch(modelInstallerProvider).ensureInstalled();
 });
 
 // Tracks model load state so the UI can rebuild on changes
@@ -110,7 +94,6 @@ class _AiModeNotifier extends StateNotifier<AiMode> {
             ? AiMode.local
             : AiMode.off;
     state = mode;
-    if (mode == AiMode.local) await _loadLocalModel();
   }
 
   Future<void> set(AiMode mode) async {
@@ -123,21 +106,8 @@ class _AiModeNotifier extends StateNotifier<AiMode> {
             : mode == AiMode.local
                 ? 'local'
                 : 'off');
-    if (mode == AiMode.local && prev != AiMode.local) {
-      await _loadLocalModel();
-    } else if (mode != AiMode.local && prev == AiMode.local) {
+    if (mode != AiMode.local && prev == AiMode.local) {
       await _ref.read(gemmaServiceProvider.notifier).unloadModel();
-    }
-  }
-
-  Future<void> _loadLocalModel() async {
-    final db = _ref.read(databaseProvider);
-    final savedPath = await db.getSetting('gemma_model_path');
-    final path = (savedPath?.isNotEmpty == true)
-        ? savedPath!
-        : await _ref.read(modelInstallerProvider).ensureInstalled();
-    if (path != null && path.isNotEmpty) {
-      await _ref.read(gemmaServiceProvider.notifier).loadModel(path);
     }
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:isolate';
 
 import 'package:flutter/services.dart';
@@ -185,9 +186,9 @@ class _GemmaEngine {
 
   Future<InferenceModel> _createWithFallbacks(FlutterGemmaPlugin gemma) async {
     final backends = <PreferredBackend?>[
-      PreferredBackend.gpuMixed,
-      PreferredBackend.gpuFloat16,
-      PreferredBackend.gpu,
+      if (!Platform.isLinux) PreferredBackend.gpuMixed,
+      if (!Platform.isLinux) PreferredBackend.gpuFloat16,
+      if (!Platform.isLinux) PreferredBackend.gpu,
       null,
       PreferredBackend.cpu,
     ];
